@@ -1,5 +1,3 @@
-// test 1
-
 #include <Arduino.h>
 
 /* 3 zone wireless termostat used 433Mhz temperature sensors T25
