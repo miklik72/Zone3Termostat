@@ -228,10 +228,10 @@ void loop()
 {
   calc_heating();
   set_relay();
-  if (keypad.isKey())
-  {
+  //if (keypad.isKey())
+  //{
     key = keypad.getKey();
-    keypad.buttonRelease();
+    //keypad.buttonRelease();
     switch (key)
     {
         case KEYLEFT:
@@ -244,15 +244,15 @@ void loop()
           sensor_set(2);                   // convert char of number to byte
           break;
         case KEYSET:
-          delay(1000);
+          //delay(1000);
           set_termostat();
           break;
     }
-  }
-  else
-  {
+  //}
+  //else
+  //{
       if(lcd_refresh()) print_main_screen();
-  }
+  //}
 }
 
 void eeprom_load()
@@ -316,11 +316,11 @@ void set_time()
   //delay(5000);
   while (goloop)
   {
-    if (keypad.isKey())
-    {
+    //if (keypad.isKey())
+    //{
       key = keypad.getKey();
-      keypad.buttonRelease();
-      delay(50);
+      //keypad.buttonRelease();
+      //delay(50);
       switch (key)
       {
         case KEYLEFT:
@@ -332,10 +332,11 @@ void set_time()
           set_value(key);
           break;
         case KEYSET:
+          delay(1000);   // ?????
           goloop = false;
           break;
       }
-    }
+    //}
   }
   write_time();
 }
