@@ -104,9 +104,10 @@ DS3231 rtc(SDA,SCL);
 Time t;
 
 //keypad
-#define KEY_APIN A0
+//#define KEY_APIN A0
 #include <DFR_KeyMM.h>
-DFR_KeyMM keypad(KEY_APIN);
+//DFR_KeyMM keypad(KEY_APIN);
+DFR_KeyMM keypad;               // A0 is wired in LCD keypad shield
 int key;
 
 //relay
