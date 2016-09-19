@@ -314,7 +314,8 @@ void set_time()
   //lcd.cursor();
   lcd.blink();
   //delay(5000);
-  while (goloop)
+  long etime = millis();
+  while (goloop && ((millis() - etime) < EXIT_TIME))
   {
     //if (keypad.isKey())
     //{
@@ -332,10 +333,11 @@ void set_time()
           set_value(key);
           break;
         case KEYSET:
-          delay(1000);   // ?????
+          //delay(1000);   // ?????
           goloop = false;
           break;
       }
+      if(key > 0) etime = millis();
     //}
   }
   write_time();
@@ -346,16 +348,17 @@ void write_time()
   boolean goloop = true;
   lcd.setCursor(TIME_SCOL + 3,TIME_ROW);
   lcd.print("SET");
-  delay(2000);
+  delay(1000);
   lcd.setCursor(TIME_SCOL + 3,TIME_ROW);
   lcd.blink();
-  while (goloop)
+  long etime = millis();
+  while (goloop && ((millis() - etime) < EXIT_TIME))
   {
-    if (keypad.isKey())
-    {
+    //if (keypad.isKey())
+    //{
       key = keypad.getKey();
-      keypad.buttonRelease();
-      delay(50);
+      //keypad.buttonRelease();
+      //delay(50);
       switch (key)
       {
         case KEYLEFT:
@@ -370,10 +373,11 @@ void write_time()
           lcd.print("Set time");
           rtc.setTime(t.hour,t.min,0);
           rtc.setDate(t.date,t.mon,t.year);
-          delay(2000);
+          //delay(2000);
           break;
       }
-    }
+      if(key > 0) etime = millis();
+    //}
   }
 }
 
@@ -759,7 +763,7 @@ void calc_heating()
       }
     }
     heating = false;
-    for(byte c = 0; c < SENSORS; c++)          // loop for all chanes
+    for(byte c = 0; c < SENSORS; c++)          // loop for all chanels
     {
       if(sens_heating[c]) heating = true;
     }
@@ -818,14 +822,14 @@ void sensor_set(byte c)
   lcd.clear();
   boolean goloop = true;
   print_sensor_state(c);
-  delay(100);
+  //delay(100);
   long etime = millis();
   while (goloop && ((millis() - etime) < EXIT_TIME))
   {
-    if (keypad.isKey())
-    {
+    //if (keypad.isKey())
+    //{
       key = keypad.getKey();
-      keypad.buttonRelease();
+      //keypad.buttonRelease();
       switch (key)
       {
         case KEYLEFT:
@@ -848,8 +852,8 @@ void sensor_set(byte c)
           goloop = false;
           break;
       }
-      etime = millis();
-    }
+      if(key > 0) etime = millis();
+    //}
     if(lcd_refresh()) print_sensor_state(c);
   }
   lcd.clear();
@@ -873,10 +877,10 @@ void sensor_activate(byte c)
   long etime = millis();
   while (goloop && ((millis() - etime) < EXIT_TIME))
   {
-    if (keypad.isKey())
-    {
+    //if (keypad.isKey())
+    //{
       key = keypad.getKey();
-      keypad.buttonRelease();
+      //keypad.buttonRelease();
       switch (key)
       {
         case KEYLEFT:
@@ -885,12 +889,12 @@ void sensor_activate(byte c)
           {
             set_date_delay(c,key);
             print_sensor_activate(c);
-            delay(100);
+            //delay(100);
           }
           break;
         case KEYSET:
           sens_active[c] = (sens_active[c]) ? false : true;
-          delay(1000);
+          //delay(1000);
           /*
           if(sens_active[c])
           {
@@ -913,15 +917,15 @@ void sensor_activate(byte c)
           {
             set_time_delay(c);
             print_sensor_activate(c);
-            delay(100);
+            //delay(100);
           }
           break;
         case KEYDOWN:
           goloop = false;
           break;
       }
-      etime = millis();
-    }
+      if(key > 0) etime = millis();
+    //}
     if(lcd_refresh()) print_sensor_activate(c);
   }
   lcd.clear();
@@ -1197,7 +1201,7 @@ void print_heating(byte col, byte row)
 void print_state(byte c, byte col, byte row)
 {
   lcd.setCursor(col, row);
-  lcd.print(getSensorProg(c));
+  lcd.print((isSensorDelay(c)) ? 'z' : getSensorProg(c));
 }
 
 // Return char for program number A or a to E or e
