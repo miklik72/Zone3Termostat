@@ -175,19 +175,19 @@ boolean heating = false;                                  // control relay for t
 byte sens_prg[SENSORS]={2,3,1};                           // number of program for sensor
 byte prg_temp[PROGRAMS][DAY_STEP] =                           // temperature for programs
 {
-  {23,18,0,0,0,0},
-  {22,17,0,0,0,0},
-  {23,20,23,24,23,18},
-  {22,20,22,23,27,18},
-  {22,0,0,0,0,0}
+  {23,21,23,20,0,0},
+  {24,20,0,0,0,0},
+  {22,0,0,0,0,0},
+  {23,19,0,0,0,0},
+  {24,0,0,0,0,0}
 };
 unsigned int prg_time[PROGRAMS][DAY_STEP] =        // time points for programs
 {
-  {700,2200,0,0,0,0},                              // number format HHMM, 0 = off
-  {800,2000,0,0,0,0},
-  {600,900,1300,1700,1900,2200},
-  {600,900,1400,1700,2000,2200},
-  {900,0,0,0,0}
+  {600,1000,1500,2300,0,0},                              // number format HHMM, 0 = off
+  {600,2200,0,0,0,0},
+  {100,0,0,0,0,0},
+  {600,2300,0,0,0,0},
+  {100,0,0,0,0,0}
 };
 unsigned long deltime = 0;
 boolean refreshtime = false;
@@ -762,6 +762,10 @@ void calc_heating()
       {
         sens_heating[c] = false;
       }
+
+      //antifreez - under 5°C
+      if(SensorT25::getTemperature(c) < 5 && SensorT25::isValid(c)) sens_heating[c] = true;
+
     }
     heating = false;
     for(byte c = 0; c < SENSORS; c++)          // loop for all chanels
@@ -833,23 +837,23 @@ void sensor_set(byte c)
       //keypad.buttonRelease();
       switch (key)
       {
-        case KEYLEFT:
+        case KEYLEFT:                        //change program
         case KEYRIGHT:
           sensor_prog_change(c,key);
           lcd.clear();
           print_sensor_state(c);
           break;
-        case KEYSET:
+        case KEYSET:                        // activate sensor
           //sens_active[c] = (sens_active[c]) ? false : true;
           sensor_activate(c);
           eeprom_save_active(c);
           print_sensor_state(c);
           break;
-        case KEYUP:
+        case KEYUP:                        // print program
           //sens_heating[c] = sens_heating[c] ? false : true;
           print_program(c);
           break;
-        case KEYDOWN:
+        case KEYDOWN:                     //back
           goloop = false;
           break;
       }
@@ -884,16 +888,16 @@ void sensor_activate(byte c)
       //keypad.buttonRelease();
       switch (key)
       {
-        case KEYLEFT:
+        case KEYLEFT:            // date delay
         case KEYRIGHT:
-          if(sens_active[c])
-          {
+          //if(sens_active[c])
+          //{
             set_date_delay(c,key);
             print_sensor_activate(c);
             //delay(100);
-          }
+          //}
           break;
-        case KEYSET:
+        case KEYSET:               //activate-deactivate
           sens_active[c] = (sens_active[c]) ? false : true;
           //delay(1000);
           /*
@@ -913,13 +917,13 @@ void sensor_activate(byte c)
           */
           print_sensor_activate(c);
           break;
-        case KEYUP:
-          if(sens_active[c])
-          {
+        case KEYUP:              //hour delay
+          //if(sens_active[c])
+          //{
             set_time_delay(c);
             print_sensor_activate(c);
             //delay(100);
-          }
+          //}
           break;
         case KEYDOWN:
           goloop = false;
@@ -930,7 +934,8 @@ void sensor_activate(byte c)
     if(lcd_refresh()) print_sensor_activate(c);
   }
   lcd.clear();
-  if(sens_active[c]) eeprom_save_delay(c);
+  //if(sens_active[c]) eeprom_save_delay(c);
+  eeprom_save_delay(c);
 }
 
 void set_date_delay(byte c, byte k)
@@ -1052,7 +1057,7 @@ void print_program(byte c)
     lcd.setCursor(s*6, 0);
     if(prg_time[p][s] == 0)
     {
-      s--;
+      //s--;
       break;
     }
     //if(prg_time[p][s] < 1000) lcd.print('0');
