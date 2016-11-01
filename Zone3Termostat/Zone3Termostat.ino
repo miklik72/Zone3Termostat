@@ -3,6 +3,8 @@
 /* 3 zone wireless termostat used 433Mhz temperature sensors T25
 Martin Mikala (2016) dev@miklik.cz
 
+v1.1 1.1.2016 - extension for set programs
+
 Devices:
 1x Arduino UNO
 3x Sencor T25 433MHz sensor http://www.sencor.eu/wireless-sensor/sws-t25
@@ -297,11 +299,72 @@ void eeprom_save_delay(byte c)
 
 void set_termostat()
 {
-  set_time();
-  lcd.clear();
+    boolean goloop = true;
+    byte menu_position = 0;
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("TIME");
+    lcd.setCursor(0,1);
+    lcd.print("PROGRAMS");
+    lcd.setCursor(0,0);
+    lcd.blink();
+    long etime = millis();
+    while (goloop && ((millis() - etime) < EXIT_TIME))
+    {
+        key = keypad.getKey();
+        switch (key)
+        {
+            case KEYLEFT:
+            case KEYRIGHT:
+                menu_position = 255;
+                goloop = false;
+                break;
+            case KEYUP:
+                menu_position = 0;
+                lcd.setCursor(0,menu_position);
+                lcd.blink();
+                break;
+            case KEYDOWN:
+                menu_position = 1;
+                lcd.setCursor(0,menu_position);
+                lcd.blink();
+                break;
+          case KEYSET:
+            goloop = false;
+            break;
+        }
+        if(key > 0) etime = millis();
+      //}
+    }
+    switch (menu_position)
+    {
+        case 0:
+            set_time();
+            break;
+        case 1:
+            set_programs();
+            break;
+        case 255:
+            break;
+    }
+    lcd.clear();
+}
+
+void set_programs()
+{
+    boolean goloop = true;
+    byte p = 0;
+    lcd.clear();
+    p = select_program();
 
 }
 
+byte select_program()
+{
+
+}
+
+// set RTC
 void set_time()
 {
   t = rtc.getTime();
