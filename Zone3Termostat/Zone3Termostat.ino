@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
-/* 3 zone wireless termostat used 433Mhz temperature sensors T25
+/* 3 zone wireless termostat used 433Mhz temperature sensors T25.
 Martin Mikala (2016) dev@miklik.cz
 
 Devices:
