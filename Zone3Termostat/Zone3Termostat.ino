@@ -178,15 +178,15 @@ byte prg_temp[PROGRAMS][DAY_STEP] =                           // temperature for
   {23,21,23,20,0,0},
   {24,20,0,0,0,0},
   {22,0,0,0,0,0},
-  {23,19,0,0,0,0},
-  {24,0,0,0,0,0}
+  {22,21,22,21,20,18},
+  {18,0,0,0,0,0}
 };
 unsigned int prg_time[PROGRAMS][DAY_STEP] =        // time points for programs
 {
   {600,1000,1500,2300,0,0},                              // number format HHMM, 0 = off
   {600,2200,0,0,0,0},
   {100,0,0,0,0,0},
-  {600,2300,0,0,0,0},
+  {600,800,1800,2000,2200,2300},
   {100,0,0,0,0,0}
 };
 unsigned long deltime = 0;
