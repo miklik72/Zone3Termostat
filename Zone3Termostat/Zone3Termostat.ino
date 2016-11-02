@@ -123,8 +123,10 @@ long relay_oldtime = millis();
 #define EEPROM_OFFSET 0                                   // not used             1B
 #define EEPROM_OFFSET_DATA EEPROM_OFFSET + 1              // offset for data
 #define EEPROM_OFFSET_ACT EEPROM_OFFSET_DATA              // ACTIVATED SENSORS    3B
-#define EEPROM_OFFSET_PRG EEPROM_OFFSET_ACT + SENSORS    // SENSORS PROGRAM      3B
-#define EEPROM_OFFSET_DELAY EEPROM_OFFSET_PRG + SENSORS  // DELAY DATE and HOUR  3x3B
+#define EEPROM_OFFSET_PRG EEPROM_OFFSET_ACT + SENSORS     // SENSORS PROGRAM      3B
+#define EEPROM_OFFSET_DELAY EEPROM_OFFSET_PRG + SENSORS   // DELAY DATE and HOUR  3x3B = DDMM+HH
+#define EEPROM_OFFSET_PROGS EEPROM_OFFSET_DELAY + 9       // Termostat programs - 5x6x3B = 6 steps temperature + HHMM for % programs
+#define EEPROM_OFFSET_NEXT EEPROM_OFFSET_PROGS + (PROGRAMS * DAY_STEP * 3)  // 1st free byte
 boolean rom_change = false;
 
 //Application definition
@@ -149,6 +151,8 @@ boolean rom_change = false;
 #define STATE_SENS_C 11
 #define PRG_SENS_C 15
 #define EXIT_TIME 10000           //time for automatic exit to main screen in ms
+#define MAX_TEMP 30               // Max temperature set
+#define MIN_TEMP 4                // Min temperature
     // Time set scree
 #define TIME_ROW 0
 #define TIME_HCOL 4
@@ -353,15 +357,85 @@ void set_termostat()
 void set_programs()
 {
     boolean goloop = true;
-    byte p = 0;
+    byte p = 0;     // program numbers
+    byte s = 0;     // program step
+    byte r = 0;     // row of display
     lcd.clear();
     p = select_program();
-
+    print_program(p);
+    lcd.setCursor(s,r);
+    lcd.blink();
+    r = 1;      // row for temperature
+    long etime = millis();
+    // change times for programs
+    while (goloop && ((millis() - etime) < EXIT_TIME*2))
+    {
+        key = keypad.getKey();
+        switch (key)
+        {
+            case KEYLEFT:
+                s--;
+                if(s < 0) s = DAY_STEP - 1;
+                break;
+            case KEYRIGHT:
+                s++;
+                if(s > DAY_STEP - 1) s = 0;
+                break;
+            case KEYUP:
+                prg_temp[p][s]++;
+                if(prg_temp[p][s] > MAX_TEMP) prg_temp[p][s] = MAX_TEMP;
+                if(prg_temp[p][s] < MIN_TEMP) prg_temp[p][s] = MIN_TEMP;
+                break;
+            case KEYDOWN:
+                prg_temp[p][s]--;
+                if(prg_temp[p][s] < MIN_TEMP) prg_temp[p][s] = 0;
+                break;
+          case KEYSET:
+            goloop = false;
+            break;
+        }
+        if(key > 0) etime = millis();
+        lcd.setCursor(s*6,r);
+    }
 }
 
 byte select_program()
 {
-
+    boolean goloop = true;
+    byte p = 0;
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("PROGRAM: ");
+    for (byte i = 0; i < PROGRAMS; i++)
+    {
+        lcd.setCursor(i,1);
+        lcd.print(char(i+97));        // print char of program a - e,
+    }
+    lcd.blink();
+    long etime = millis();
+    while (goloop && ((millis() - etime) < EXIT_TIME))
+    {
+        key = keypad.getKey();
+        switch (key)
+        {
+            case KEYLEFT:
+            case KEYDOWN:
+                p--;
+                if(p < 0) p = PROGRAMS;
+                break;
+            case KEYRIGHT:
+            case KEYUP:
+                p++;
+                if(p > PROGRAMS-1) p = 0;
+                break;
+          case KEYSET:
+            goloop = false;
+            break;
+        }
+        if(key > 0) etime = millis();
+        lcd.setCursor(p,1);
+    }
+    return p;
 }
 
 // set RTC
@@ -912,10 +986,10 @@ void sensor_set(byte c)
           eeprom_save_active(c);
           print_sensor_state(c);
           break;
-        case KEYUP:                        // print program
+        //case KEYUP:                        // print program
           //sens_heating[c] = sens_heating[c] ? false : true;
-          print_program(c);
-          break;
+          //print_program(c);
+          //break;
         case KEYDOWN:                     //back
           goloop = false;
           break;
@@ -1110,6 +1184,8 @@ byte getNextProgStep(byte c)
   return i;
 }
 
+
+
 void print_program(byte c)
 {
   byte p = sens_prg[c];
@@ -1118,18 +1194,20 @@ void print_program(byte c)
   for(s = 0;s < DAY_STEP;s++)
   {
     lcd.setCursor(s*6, 0);
+    /*
     if(prg_time[p][s] == 0)
     {
       //s--;
       break;
     }
+    */
     //if(prg_time[p][s] < 1000) lcd.print('0');
     lcd.print(prgInt2Time(prg_time[p][s]));
     lcd.print(' ');
     lcd.setCursor(s*6, 1);
     lcd.print(prg_temp[p][s]);
   }
-
+/*
   if(s > 1)
   {
     for(byte j = 0; j < 2; j++)
@@ -1150,6 +1228,7 @@ void print_program(byte c)
   }
   delay(2000);
   lcd.clear();
+*/
 }
 
 
