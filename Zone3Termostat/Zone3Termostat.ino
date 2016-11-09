@@ -3,7 +3,7 @@
 /* 3 zone wireless termostat used 433Mhz temperature sensors T25
 Martin Mikala (2016) dev@miklik.cz
 
-v1.1 1.1.2016 - extension for set programs
+v1.1 9.11.2016 - extension for set programs
 
 Devices:
 1x Arduino UNO
