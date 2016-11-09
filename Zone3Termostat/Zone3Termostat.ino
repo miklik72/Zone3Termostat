@@ -4,6 +4,7 @@
 Martin Mikala (2016) dev@miklik.cz
 
 v1.1 9.11.2016 - extension for set programs
+v1.2 D.M.2016 - open window and close valve detection
 
 Devices:
 1x Arduino UNO
