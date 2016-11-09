@@ -83,6 +83,7 @@ byte fire1[8] = {
 };
 
 // fire2
+/*
 byte fire2[8] = {
 	0b00000,
 	0b00000,
@@ -93,6 +94,7 @@ byte fire2[8] = {
 	0b01001,
 	0b00110
 };
+*/
 
 #include <LiquidCrystal.h>
 // initialize the library with the numbers of the interface pins
@@ -173,6 +175,9 @@ byte cur_pos_r = TIME_ROW;
 #define KEYRIGHT 5
 #define KEYSET 1
 
+//next
+#define PROG_SPACE 5
+
 // Application variables
 String act_screen = "main";
 boolean sens_active[SENSORS]={false,false,false};         // is sensor control active
@@ -180,6 +185,24 @@ boolean sens_heating[SENSORS]={false,false,false};        // heating for sensor
 long sens_delay[SENSORS][3]={{0,0,0},{0,0,0},{0,0,0}};    // activate sensor delay DDMMHH (Day Month Hour)
 boolean heating = false;                                  // control relay for turn on/off heating
 byte sens_prg[SENSORS]={2,3,1};                           // number of program for sensor
+
+const byte init_temp[PROGRAMS][DAY_STEP] =                           // temperature for programs
+{
+  {23,21,23,20,0,0},
+  {22,20,21,18,0,0},
+  {22,0,0,0,0,0},
+  {22,21,22,21,20,18},
+  {18,0,0,0,0,0}
+};
+const unsigned int init_time[PROGRAMS][DAY_STEP] =        // time points for programs
+{
+  {600,1000,1500,2300,0,0},                              // number format HHMM, 0 = off
+  {600,1000,1500,2300,0,0},
+  {100,0,0,0,0,0},
+  {600,900,1800,2000,2200,2300},
+  {100,0,0,0,0,0}
+};
+
 byte prg_temp[PROGRAMS][DAY_STEP] =                           // temperature for programs
 {
   {23,21,23,20,0,0},
@@ -196,6 +219,7 @@ unsigned int prg_time[PROGRAMS][DAY_STEP] =        // time points for programs
   {600,900,1800,2000,2200,2300},
   {100,0,0,0,0,0}
 };
+
 unsigned long deltime = 0;
 boolean refreshtime = false;
 
@@ -270,9 +294,25 @@ void eeprom_init_progs()
     {
         for(byte p = 0;p < PROGRAMS;p++)
         {
-            eeprom_write_prog(p);
+            eeprom_reset_prog(p);
         }
         EEPROM.write(EEPROM_OFFSET_PSET, 1);
+    } else
+    {
+        for(byte p = 0;p < PROGRAMS;p++)
+        {
+            eeprom_load_prog(p);
+        }
+    }
+}
+
+void eeprom_load_prog(byte p)
+{
+    for(byte s = 0;s < DAY_STEP;s++)
+    {
+        prg_temp[p][s] = EEPROM.read(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3));
+        prg_time[p][s] = EEPROM.read(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1) * 100;
+        prg_time[p][s] += EEPROM.read(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2);
     }
 }
 
@@ -283,6 +323,16 @@ void eeprom_write_prog(byte p)
         EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3), prg_temp[p][s]);
         EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1, prg_time[p][s] / 100);
         EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2, prg_time[p][s] % 100);
+    }
+}
+
+void eeprom_reset_prog(byte p)
+{
+    for(byte s = 0;s < DAY_STEP;s++)
+    {
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3), init_temp[p][s]);
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1, init_time[p][s] / 100);
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2, init_time[p][s] % 100);
     }
 }
 
@@ -388,6 +438,7 @@ void set_programs()
     byte d2 = 0;
     lcd.clear();
     p = select_program();
+    reset_program(p);
     print_program(p);
     lcd.setCursor(s,r);
     lcd.blink();
@@ -427,14 +478,14 @@ void set_programs()
             break;
         }
         if(key > 0) etime = millis();
-        lcd.setCursor(s*6,r);
+        lcd.setCursor(s*PROG_SPACE,r);
 
         //move screen to second part
         if(s > 2 & d1 == 0)
         {
-            for(int i = 0;i < 16;i++)
+            for(int i = 0;i < 3*PROG_SPACE;i++)
             {
-                lcd.scrollDisplayRight();
+                lcd.scrollDisplayLeft();
             }
             d1 = 1;
         }
@@ -442,14 +493,125 @@ void set_programs()
         //move screen to first part
         if(s < 3 & d1 == 1)
         {
-            for(int i = 0;i < 16;i++)
+            for(int i = 0;i < 3*PROG_SPACE;i++)
             {
-                lcd.scrollDisplayLeft();
+                lcd.scrollDisplayRight();
             }
             d1 = 0;
         }
     }
+
+    // set program times
+    goloop = true;
+    r = 0;      // row for time
+    etime = millis();
+    // change times for programs
+    while (goloop && ((millis() - etime) < EXIT_TIME*2))
+    {
+        key = keypad.getKey();
+        switch (key)
+        {
+            case KEYLEFT:
+                s--;
+                if(s > DAY_STEP) s = DAY_STEP - 1;
+                break;
+            case KEYRIGHT:
+                s++;
+                if(s > DAY_STEP - 1) s = 0;
+                break;
+            case KEYUP:
+                prg_time[p][s] += 100;
+                if(prg_time[p][s] > 2300) prg_time[p][s] = 0;
+                // time cannot be larger than next time
+                if(s < DAY_STEP - 1 & prg_time[p][s] > prg_time[p][s + 1]) prg_time[p][s] = prg_time[p][s + 1];
+                lcd.print(prg_time[p][s]);
+                if(prg_time[p][s] < 1000) lcd.print(' ');
+                break;
+            case KEYDOWN:
+                prg_time[p][s] -= 100;
+                if(prg_time[p][s] > 2300) prg_time[p][s] = 2300;
+                // time cannot be smaller than previous times
+                if(s > 0 & prg_time[p][s] < prg_time[p][s - 1]) prg_time[p][s] = prg_time[p][s - 1];
+                lcd.print(prg_time[p][s]);
+                if(prg_time[p][s] < 1000) lcd.print(' ');
+                break;
+          case KEYSET:
+            goloop = false;
+            break;
+        }
+        if(key > 0) etime = millis();
+        lcd.setCursor(s*PROG_SPACE,r);
+
+        //move screen to second part
+        if(s > 2 & d1 == 0)
+        {
+            for(int i = 0;i < 3*PROG_SPACE;i++)
+            {
+                lcd.scrollDisplayLeft();
+            }
+            d1 = 1;
+        }
+
+        //move screen to first part
+        if(s < 3 & d1 == 1)
+        {
+            for(int i = 0;i < 3*PROG_SPACE;i++)
+            {
+                lcd.scrollDisplayRight();
+            }
+            d1 = 0;
+        }
+    }
+
     eeprom_write_prog(p);
+}
+
+void reset_program(byte p)
+{
+    boolean goloop = true;
+    byte menu_position = 0;
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("SET");
+    lcd.setCursor(0,1);
+    lcd.print("RESET");
+    lcd.setCursor(0,0);
+    lcd.blink();
+    long etime = millis();
+    while (goloop && ((millis() - etime) < EXIT_TIME))
+    {
+        key = keypad.getKey();
+        switch (key)
+        {
+            case KEYUP:
+                menu_position = 0;
+                lcd.setCursor(0,menu_position);
+                lcd.blink();
+                break;
+            case KEYDOWN:
+                menu_position = 1;
+                lcd.setCursor(0,menu_position);
+                lcd.blink();
+                break;
+          case KEYSET:
+            goloop = false;
+            break;
+        }
+        if(key > 0) etime = millis();
+      //}
+    }
+    switch (menu_position)
+    {
+        case 0:
+            break;
+        case 1:
+            eeprom_reset_prog(p);
+            eeprom_load_prog(p);
+            break;
+        case 255:
+            break;
+    }
+    lcd.clear();
 }
 
 byte select_program()
@@ -464,6 +626,7 @@ byte select_program()
         lcd.setCursor(i,1);
         lcd.print(char(i+97));        // print char of program a - e,
     }
+
     lcd.blink();
     long etime = millis();
     while (goloop && ((millis() - etime) < EXIT_TIME))
@@ -479,7 +642,7 @@ byte select_program()
             case KEYRIGHT:
             case KEYUP:
                 p++;
-                if(p > PROGRAMS-1) p = 0;
+                if(p > PROGRAMS - 1) p = 0;
                 break;
           case KEYSET:
             goloop = false;
@@ -1244,10 +1407,11 @@ void print_program(byte p)
   lcd.clear();
   for(byte s = 0;s < DAY_STEP;s++)
   {
-    lcd.setCursor(s*6, 0);
-    lcd.print(prgInt2Time(prg_time[p][s]));
+    lcd.setCursor(s*PROG_SPACE, 0);
+    //lcd.print(prgInt2Time(prg_time[p][s]));
+    lcd.print(prg_time[p][s]);
     lcd.print(' ');
-    lcd.setCursor(s*6, 1);
+    lcd.setCursor(s*PROG_SPACE, 1);
     lcd.print(prg_temp[p][s]);
   }
 }
