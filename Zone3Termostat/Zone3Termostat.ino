@@ -120,12 +120,13 @@ long relay_oldtime = millis();
 //EEPROM
 #include <EEPROM.h>
 //#define EEPROM_BYTES 7           // 1x on/off, 3x active sensor, 3x program sensor
-#define EEPROM_OFFSET 0                                   // not used             1B
-#define EEPROM_OFFSET_DATA EEPROM_OFFSET + 1              // offset for data
-#define EEPROM_OFFSET_ACT EEPROM_OFFSET_DATA              // ACTIVATED SENSORS    3B
-#define EEPROM_OFFSET_PRG EEPROM_OFFSET_ACT + SENSORS     // SENSORS PROGRAM      3B
-#define EEPROM_OFFSET_DELAY EEPROM_OFFSET_PRG + SENSORS   // DELAY DATE and HOUR  3x3B = DDMM+HH
-#define EEPROM_OFFSET_PROGS EEPROM_OFFSET_DELAY + 9       // Termostat programs - 5x6x3B = 6 steps temperature + HHMM for % programs
+#define EEPROM_OFFSET 0                                   // ERRPROM OFFSET
+#define EEPROM_OFFSET_DATA EEPROM_OFFSET + 1              // offset for data start
+#define EEPROM_OFFSET_ACT EEPROM_OFFSET_DATA              // 1-3 ACTIVATED SENSORS    3B
+#define EEPROM_OFFSET_PRG EEPROM_OFFSET_ACT + SENSORS     // 4-6 SENSORS PROGRAM      3B
+#define EEPROM_OFFSET_DELAY EEPROM_OFFSET_PRG + SENSORS   // 7-15 DELAY DATE and HOUR  3x3B = DDMM+HH
+#define EEPROM_OFFSET_PSET EEPROM_OFFSET_DELAY + 9       // 16 Termostat programs are in EEPROM 1B
+#define EEPROM_OFFSET_PROGS EEPROM_OFFSET_PSET + 1       // 17 - 107 Termostat programs - 5x6x3B = 6 steps temperature + HHMM for programs
 #define EEPROM_OFFSET_NEXT EEPROM_OFFSET_PROGS + (PROGRAMS * DAY_STEP * 3)  // 1st free byte
 boolean rom_change = false;
 
@@ -228,6 +229,7 @@ void setup()
   pinMode(RELAY_PIN, OUTPUT);
 
   //EEPROM
+  eeprom_init_progs();
   eeprom_load();
 }
 
@@ -260,6 +262,28 @@ void loop()
   //{
       if(lcd_refresh()) print_main_screen();
   //}
+}
+
+void eeprom_init_progs()
+{
+    if(EEPROM.read(EEPROM_OFFSET_PSET) != 1)
+    {
+        for(byte p = 0;p < PROGRAMS;p++)
+        {
+            eeprom_write_prog(p);
+        }
+        EEPROM.write(EEPROM_OFFSET_PSET, 1);
+    }
+}
+
+void eeprom_write_prog(byte p)
+{
+    for(byte s = 0;s < DAY_STEP;s++)
+    {
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3), prg_temp[p][s]);
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1, prg_time[p][s] / 100);
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2, prg_time[p][s] % 100);
+    }
 }
 
 void eeprom_load()
@@ -307,9 +331,9 @@ void set_termostat()
     byte menu_position = 0;
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("TIME");
-    lcd.setCursor(0,1);
     lcd.print("PROGRAMS");
+    lcd.setCursor(0,1);
+    lcd.print("TIME");
     lcd.setCursor(0,0);
     lcd.blink();
     long etime = millis();
@@ -343,10 +367,10 @@ void set_termostat()
     switch (menu_position)
     {
         case 0:
-            set_time();
+            set_programs();
             break;
         case 1:
-            set_programs();
+            set_time();
             break;
         case 255:
             break;
@@ -360,6 +384,8 @@ void set_programs()
     byte p = 0;     // program numbers
     byte s = 0;     // program step
     byte r = 0;     // row of display
+    byte d1 = 0;     // roll display temp variable
+    byte d2 = 0;
     lcd.clear();
     p = select_program();
     print_program(p);
@@ -375,7 +401,7 @@ void set_programs()
         {
             case KEYLEFT:
                 s--;
-                if(s < 0) s = DAY_STEP - 1;
+                if(s > DAY_STEP) s = DAY_STEP - 1;
                 break;
             case KEYRIGHT:
                 s++;
@@ -385,10 +411,16 @@ void set_programs()
                 prg_temp[p][s]++;
                 if(prg_temp[p][s] > MAX_TEMP) prg_temp[p][s] = MAX_TEMP;
                 if(prg_temp[p][s] < MIN_TEMP) prg_temp[p][s] = MIN_TEMP;
+                lcd.print(prg_temp[p][s]);
+                if(prg_temp[p][s] < 10) lcd.print(' ');
                 break;
             case KEYDOWN:
                 prg_temp[p][s]--;
                 if(prg_temp[p][s] < MIN_TEMP) prg_temp[p][s] = 0;
+                if(prg_temp[p][s] > MAX_TEMP) prg_temp[p][s] = 0;
+                if(s == 0 & prg_temp[p][s] == 0) prg_temp[p][s] = MIN_TEMP;
+                lcd.print(prg_temp[p][s]);
+                if(prg_temp[p][s] < 10) lcd.print(' ');
                 break;
           case KEYSET:
             goloop = false;
@@ -396,7 +428,28 @@ void set_programs()
         }
         if(key > 0) etime = millis();
         lcd.setCursor(s*6,r);
+
+        //move screen to second part
+        if(s > 2 & d1 == 0)
+        {
+            for(int i = 0;i < 16;i++)
+            {
+                lcd.scrollDisplayRight();
+            }
+            d1 = 1;
+        }
+
+        //move screen to first part
+        if(s < 3 & d1 == 1)
+        {
+            for(int i = 0;i < 16;i++)
+            {
+                lcd.scrollDisplayLeft();
+            }
+            d1 = 0;
+        }
     }
+    eeprom_write_prog(p);
 }
 
 byte select_program()
@@ -421,7 +474,7 @@ byte select_program()
             case KEYLEFT:
             case KEYDOWN:
                 p--;
-                if(p < 0) p = PROGRAMS;
+                if(p > PROGRAMS) p = PROGRAMS - 1;
                 break;
             case KEYRIGHT:
             case KEYUP:
@@ -1186,49 +1239,17 @@ byte getNextProgStep(byte c)
 
 
 
-void print_program(byte c)
+void print_program(byte p)
 {
-  byte p = sens_prg[c];
   lcd.clear();
-  byte s;
-  for(s = 0;s < DAY_STEP;s++)
+  for(byte s = 0;s < DAY_STEP;s++)
   {
     lcd.setCursor(s*6, 0);
-    /*
-    if(prg_time[p][s] == 0)
-    {
-      //s--;
-      break;
-    }
-    */
-    //if(prg_time[p][s] < 1000) lcd.print('0');
     lcd.print(prgInt2Time(prg_time[p][s]));
     lcd.print(' ');
     lcd.setCursor(s*6, 1);
     lcd.print(prg_temp[p][s]);
   }
-/*
-  if(s > 1)
-  {
-    for(byte j = 0; j < 2; j++)
-    {
-      delay(2000);
-      for(byte i = 0;i < (s * 6 - 16);i++)
-      {
-        lcd.scrollDisplayLeft();
-        delay(400);
-      }
-      delay(1000);
-      for(byte i = 0;i < (s * 6 - 16);i++)
-      {
-        lcd.scrollDisplayRight();
-        delay(400);
-      }
-    }
-  }
-  delay(2000);
-  lcd.clear();
-*/
 }
 
 
