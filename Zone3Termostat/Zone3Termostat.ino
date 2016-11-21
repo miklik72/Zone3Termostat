@@ -4,7 +4,7 @@
 Martin Mikala (2016) dev@miklik.cz
 
 v1.1.0 9.11.2016 - extension for set programs
-v1.2.0 D.M.2016 - open window and close valve detection
+v1.1.1 D.M.2016 - open window and close valve detection
 
 Devices:
 1x Arduino UNO
@@ -13,7 +13,6 @@ Devices:
 1x LCD keypad shield V0.1 LCD1602A+buttons
 1x RTC DS3231
 1x relay module HL-51 250V/10A
-
 */
 
 #define DAY_STEP 6
@@ -304,11 +303,7 @@ void loop()
           set_termostat();
           break;
     }
-  //}
-  //else
-  //{
       if(lcd_refresh()) print_main_screen();
-  //}
 }
 
 //save few last temperatures for sensors in interval
