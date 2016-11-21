@@ -4,7 +4,8 @@
 Martin Mikala (2016) dev@miklik.cz
 
 v1.1.0 9.11.2016 - extension for set programs
-v1.1.1 D.M.2016 - open window and close valve detection
+v1.2.0           - reset to initial state and EEPROM data structure version
+v1.X.0 D.M.2016 - open window and close valve detection
 
 Devices:
 1x Arduino UNO
@@ -14,6 +15,10 @@ Devices:
 1x RTC DS3231
 1x relay module HL-51 250V/10A
 */
+
+#define APP_VERSION_MAIN 1
+#define APP_VERSION_RELEASE 2
+#define APP_VERSION_PATCH 0
 
 #define DAY_STEP 6
 #define PROGRAMS 5
@@ -82,20 +87,6 @@ byte fire1[8] = {
 	0b01110
 };
 
-// fire2
-/*
-byte fire2[8] = {
-	0b00000,
-	0b00000,
-	0b00010,
-	0b00010,
-	0b00101,
-	0b01001,
-	0b01001,
-	0b00110
-};
-*/
-
 #include <LiquidCrystal.h>
 // initialize the library with the numbers of the interface pins
 LiquidCrystal lcd(PIN_RS,  PIN_EN,  PIN_d4,  PIN_d5,  PIN_d6,  PIN_d7);
@@ -108,9 +99,7 @@ DS3231 rtc(SDA,SCL);
 Time t;
 
 //keypad
-//#define KEY_APIN A0
 #include <DFR_KeyMM.h>
-//DFR_KeyMM keypad(KEY_APIN);
 DFR_KeyMM keypad;               // A0 is wired in LCD keypad shield
 int key;
 
@@ -121,8 +110,9 @@ long relay_oldtime = millis();
 
 //EEPROM
 #include <EEPROM.h>
-//#define EEPROM_BYTES 7           // 1x on/off, 3x active sensor, 3x program sensor
+#define EEPROM_VERSION 10
 #define EEPROM_OFFSET 0                                   // ERRPROM OFFSET
+#define EEPROM_OFFSET_VERSION EEPROM_OFFSET               // version of EEPROM data structure
 #define EEPROM_OFFSET_DATA EEPROM_OFFSET + 1              // offset for data start
 #define EEPROM_OFFSET_ACT EEPROM_OFFSET_DATA              // 1-3 ACTIVATED SENSORS    3B
 #define EEPROM_OFFSET_PRG EEPROM_OFFSET_ACT + SENSORS     // 4-6 SENSORS PROGRAM      3B
@@ -130,6 +120,7 @@ long relay_oldtime = millis();
 #define EEPROM_OFFSET_PSET EEPROM_OFFSET_DELAY + 9       // 16 Termostat programs are in EEPROM 1B
 #define EEPROM_OFFSET_PROGS EEPROM_OFFSET_PSET + 1       // 17 - 107 Termostat programs - 5x6x3B = 6 steps temperature + HHMM for programs
 #define EEPROM_OFFSET_NEXT EEPROM_OFFSET_PROGS + (PROGRAMS * DAY_STEP * 3)  // 1st free byte
+
 boolean rom_change = false;
 
 //Application definition
@@ -260,7 +251,12 @@ void setup()
   lcd.setCursor(0, 0);
   lcd.print("3ZoneTermostat");
   lcd.setCursor(0, 1);
-  lcd.print("by Martin Mikala");
+  lcd.print("version ");
+  lcd.print(APP_VERSION_MAIN);
+  lcd.print('.');
+  lcd.print(APP_VERSION_RELEASE);
+  lcd.print('.');
+  lcd.print(APP_VERSION_PATCH);
   delay(2000);
   lcd.clear();
 
@@ -271,6 +267,7 @@ void setup()
   pinMode(RELAY_PIN, OUTPUT);
 
   //EEPROM
+  eeprom_init();
   eeprom_init_progs();
   eeprom_load();
 
@@ -283,10 +280,14 @@ void loop()
   calc_heating();
   set_relay();
   save_temp_history();
-  //if (keypad.isKey())
-  //{
+
     key = keypad.getKey();
-    //keypad.buttonRelease();
+
+    lcd.setCursor(1,1);
+    lcd.print(key);
+    delay(2000);
+    lcd.clear();
+
     switch (key)
     {
         case KEYLEFT:
@@ -299,7 +300,6 @@ void loop()
           sensor_set(2);                   // convert char of number to byte
           break;
         case KEYSET:
-          //delay(1000);
           set_termostat();
           break;
     }
@@ -331,11 +331,10 @@ void shift_temp_hist()
     }
 }
 
-int delta_minutes(long last_lime)
+unsigned int delta_minutes(unsigned long last_lime)
 {
     unsigned long ctime = millis();
-    unsigned long delta_time;
-    delta_time = (last_lime < ctime) ? delta_time = ctime - last_lime : delta_time = ctime + !(last_lime) + 1;
+    unsigned long delta_time = (last_lime < ctime) ? ctime - last_lime : ctime + !(last_lime) + 1;
     return millis2min(delta_time);
 }
 
@@ -360,26 +359,81 @@ void reset_temp_hist(byte p)
         }
 }
 
+void eeprom_init()
+{
+    byte eeprom_version = EEPROM.read(EEPROM_OFFSET_VERSION);
+    if(eeprom_version == 0 || eeprom_version == 255)
+    {
+        eeprom_format(eeprom_version);
+    }
+}
 
+void eeprom_format(byte v)
+{
+    eeprom_format_act();
+    eeprom_format_prg();
+    eeprom_format_delay();
+    eeprom_format_progs();
+    eeprom_set_version();
+}
+
+void eeprom_format_act()
+{
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      EEPROM.write(EEPROM_OFFSET_ACT + s,0);
+    }
+}
+
+void eeprom_format_prg()
+{
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      EEPROM.write(EEPROM_OFFSET_PRG + s,0);
+    }
+}
+
+void eeprom_format_delay()
+{
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      for(byte i = 0; i < 3;i++)
+      {
+       EEPROM.write(EEPROM_OFFSET_DELAY + (s * 3) + i,0);
+      }
+    }
+}
+
+void eeprom_format_progs()
+{
+    for(byte p = 0;p < PROGRAMS;p++)
+    {
+        eeprom_reset_progs(p);
+    }
+    EEPROM.write(EEPROM_OFFSET_PSET, 1);
+}
+
+void eeprom_set_version()
+{
+    EEPROM.write(EEPROM_OFFSET_VERSION, EEPROM_VERSION);
+}
+
+//initialize programs if are not saved to EEPROM
 void eeprom_init_progs()
 {
     if(EEPROM.read(EEPROM_OFFSET_PSET) != 1)
     {
-        for(byte p = 0;p < PROGRAMS;p++)
-        {
-            eeprom_reset_prog(p);
-        }
-        EEPROM.write(EEPROM_OFFSET_PSET, 1);
+        eeprom_format_progs();
     } else
     {
         for(byte p = 0;p < PROGRAMS;p++)
         {
-            eeprom_load_prog(p);
+            eeprom_load_progs(p);
         }
     }
 }
 
-void eeprom_load_prog(byte p)
+void eeprom_load_progs(byte p)
 {
     for(byte s = 0;s < DAY_STEP;s++)
     {
@@ -389,7 +443,7 @@ void eeprom_load_prog(byte p)
     }
 }
 
-void eeprom_write_prog(byte p)
+void eeprom_write_progs(byte p)
 {
     for(byte s = 0;s < DAY_STEP;s++)
     {
@@ -399,7 +453,7 @@ void eeprom_write_prog(byte p)
     }
 }
 
-void eeprom_reset_prog(byte p)
+void eeprom_reset_progs(byte p)
 {
     for(byte s = 0;s < DAY_STEP;s++)
     {
@@ -460,7 +514,7 @@ void set_termostat()
     lcd.setCursor(0,0);
     lcd.blink();
     long etime = millis();
-    while (goloop && ((millis() - etime) < EXIT_TIME))
+    while ((goloop == true) && ((millis() - etime) < EXIT_TIME))
     {
         key = keypad.getKey();
         switch (key)
@@ -508,7 +562,7 @@ void set_programs()
     byte s = 0;     // program step
     byte r = 0;     // row of display
     byte d1 = 0;     // roll display temp variable
-    byte d2 = 0;
+    //byte d2 = 0;
     lcd.clear();
     p = select_program();
     reset_program(p);
@@ -518,7 +572,7 @@ void set_programs()
     r = 1;      // row for temperature
     long etime = millis();
     // change times for programs
-    while (goloop && ((millis() - etime) < EXIT_TIME*2))
+    while ((goloop == true) && ((millis() - etime) < EXIT_TIME*2))
     {
         key = keypad.getKey();
         switch (key)
@@ -554,7 +608,7 @@ void set_programs()
         lcd.setCursor(s*PROG_SPACE,r);
 
         //move screen to second part
-        if(s > 2 & d1 == 0)
+        if((s > 2) & (d1 == 0))
         {
             for(int i = 0;i < 3*PROG_SPACE;i++)
             {
@@ -564,7 +618,7 @@ void set_programs()
         }
 
         //move screen to first part
-        if(s < 3 & d1 == 1)
+        if((s < 3) & (d1 == 1))
         {
             for(int i = 0;i < 3*PROG_SPACE;i++)
             {
@@ -579,7 +633,7 @@ void set_programs()
     r = 0;      // row for time
     etime = millis();
     // change times for programs
-    while (goloop && ((millis() - etime) < EXIT_TIME*2))
+    while ((goloop == true) && ((millis() - etime) < EXIT_TIME*2))
     {
         key = keypad.getKey();
         switch (key)
@@ -636,7 +690,7 @@ void set_programs()
         }
     }
 
-    eeprom_write_prog(p);
+    eeprom_write_progs(p);
 }
 
 void reset_program(byte p)
@@ -678,8 +732,8 @@ void reset_program(byte p)
         case 0:
             break;
         case 1:
-            eeprom_reset_prog(p);
-            eeprom_load_prog(p);
+            eeprom_reset_progs(p);
+            eeprom_load_progs(p);
             break;
         case 255:
             break;
@@ -1174,7 +1228,7 @@ void print_set_date(byte c, byte r)
 // check if must heating
 void calc_heating()
 {
-    int ct = getTimeHHMM();               // current time HHMM
+    //int ct = getTimeHHMM();               // current time HHMM
     for(byte c = 0; c < SENSORS; c++)          // loop for all chanes
     {
       byte p = sens_prg[c];                    // program for channel
@@ -1439,7 +1493,7 @@ void print_prog_step(byte c,byte col, byte row)
 byte getProgStep(byte c)
 {
   byte p = sens_prg[c];
-  int ct = getTimeHHMM();
+  unsigned int ct = getTimeHHMM();
   byte i;
   for(i = 0; i < DAY_STEP; i++)
   {
