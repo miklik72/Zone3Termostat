@@ -100,7 +100,8 @@ Time t;
 
 //keypad
 #include <DFR_KeyMM.h>
-DFR_KeyMM keypad;               // A0 is wired in LCD keypad shield
+//DFR_KeyMM keypad(A0);               // A0 is wired in LCD keypad shield
+DFR_KeyMM keypad;
 int key;
 
 //relay
@@ -277,17 +278,11 @@ void setup()
 
 void loop()
 {
-  calc_heating();
-  set_relay();
-  save_temp_history();
+    calc_heating();
+    set_relay();
+    save_temp_history();
 
     key = keypad.getKey();
-
-    lcd.setCursor(1,1);
-    lcd.print(key);
-    delay(2000);
-    lcd.clear();
-
     switch (key)
     {
         case KEYLEFT:
@@ -304,6 +299,7 @@ void loop()
           break;
     }
       if(lcd_refresh()) print_main_screen();
+
 }
 
 //save few last temperatures for sensors in interval

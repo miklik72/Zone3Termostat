@@ -14,7 +14,7 @@
 class DFR_KeyMM
 {
   public:
-    DFR_KeyMM(byte);
+    //DFR_KeyMM(byte);
     DFR_KeyMM();
     int getKey();
     int getValue();

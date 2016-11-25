@@ -11,12 +11,10 @@ static int RIGHTKEY_ARV = 0;
 static int SELKEY_ARV = 638;
 static int NOKEY_ARV = 1023;
 
-// constructor with pin number
-DFR_KeyMM::DFR_KeyMM(byte pin)
+DFR_KeyMM::DFR_KeyMM()
 {
   _refreshRate = 50;     // delay bitween two measurements
-  //_keyPin = DEFAULT_KEY_PIN;
-  _keyPin = pin;
+  _keyPin = DEFAULT_KEY_PIN;
   _threshold = DEFAULT_THRESHOLD;
   _keyIn = NO_KEY;
   _curInput = NO_KEY;
@@ -26,16 +24,15 @@ DFR_KeyMM::DFR_KeyMM(byte pin)
   _oldTime = 0;
 }
 
-// constructor with default pin
-DFR_KeyMM::DFR_KeyMM() : DFR_KeyMM(DEFAULT_KEY_PIN) {}
-
 int DFR_KeyMM::getKey()
 {
  if (millis() > _oldTime + _refreshRate)  // only if oldtime + refresh rate is higher then current time
  {
     _prevInput = _curInput;               // save old button state
     _curInput = analogRead(_keyPin);      // read new state
-
+    // ???????
+    _threshold = DEFAULT_THRESHOLD;
+    
     //if (_curInput == _prevInput)          
     if (abs(_curInput - _prevInput) < _threshold)          //button input wasn't changed or only few
     {
@@ -58,24 +55,11 @@ int DFR_KeyMM::getKey()
    if (_change) return _curKey; else return SAMPLE_WAIT;
    _oldTime = millis();
  }
- else return SAMPLE_WAIT;
+   else
+  {
+    return SAMPLE_WAIT;
+  }
 }
-
-/*
-boolean DFR_KeyMM::isKey()
-{
-  return ((analogRead(_keyPin) < 1000) ? true : false);
-  //return true;
-}
-*/
-
-/*
-void DFR_KeyMM::buttonRelease()
-{
-  //while (analogRead(_keyPin) < 1000) {}
-  while (getKey() == SAMPLE_WAIT) {}
-}
-*/
 
 int DFR_KeyMM::getValue()
 {
