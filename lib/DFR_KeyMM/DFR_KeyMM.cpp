@@ -13,7 +13,7 @@ static int NOKEY_ARV = 1023;
 
 DFR_KeyMM::DFR_KeyMM()
 {
-  _refreshRate = 50;     // delay bitween two measurements
+  _refreshRate = 100;     // delay bitween two measurements
   _keyPin = DEFAULT_KEY_PIN;
   _threshold = DEFAULT_THRESHOLD;
   _keyIn = NO_KEY;

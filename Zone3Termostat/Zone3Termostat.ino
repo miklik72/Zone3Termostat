@@ -4,8 +4,12 @@
 Martin Mikala (2016) dev@miklik.cz
 
 v1.1.0 9.11.2016 - extension for set programs
-v1.2.0           - reset to initial state and EEPROM data structure version
-v1.X.0 D.M.2016 - open window and close valve detection
+v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, more comments
+
+todo:
+---- 1.11.2016 - open window and close valve detection
+---- 28.11.2016 - cut app to more libraries
+---- 28.11.2016 - eeprom migration functions for new EEPROM version
 
 Devices:
 1x Arduino UNO
@@ -16,6 +20,7 @@ Devices:
 1x relay module HL-51 250V/10A
 */
 
+// application version
 #define APP_VERSION_MAIN 1
 #define APP_VERSION_RELEASE 2
 #define APP_VERSION_PATCH 0
@@ -185,8 +190,7 @@ long open_window_time[SENSORS]={0,0,0};                     // detect open windo
 long close_valve_time[SENSORS]={0,0,0};                     // detect close valve
 
 //next
-#define PROG_SPACE 5
-
+#define PROG_SPACE 5                    // space between values in program screen
 
 // Application variables
 String act_screen = "main";
@@ -269,7 +273,7 @@ void setup()
 
   //EEPROM
   eeprom_init();
-  eeprom_init_progs();
+  //eeprom_init_progs();
   eeprom_load();
 
   //init variable
@@ -280,7 +284,7 @@ void loop()
 {
     calc_heating();
     set_relay();
-    save_temp_history();
+    //save_temp_history();
 
     key = keypad.getKey();
     switch (key)
@@ -302,6 +306,12 @@ void loop()
 
 }
 
+/*****************************************************************************
+*
+*        functions for recognize open window or closed radiators valve
+*
+******************************************************************************/
+
 //save few last temperatures for sensors in interval
 void save_temp_history()
 {
@@ -316,6 +326,7 @@ void save_temp_history()
     }
 }
 
+// rotate temperature history
 void shift_temp_hist()
 {
     for(byte s = 0;s < SENSORS;s++)
@@ -355,15 +366,32 @@ void reset_temp_hist(byte p)
         }
 }
 
+/*****************************************************************************
+*
+*                           EEPROM functions
+*
+******************************************************************************/
+
+
+//check EEPROM data structure version and initialize it or migrate
 void eeprom_init()
 {
-    byte eeprom_version = EEPROM.read(EEPROM_OFFSET_VERSION);
-    if(eeprom_version == 0 || eeprom_version == 255)
+    byte eeprom_version = EEPROM.read(EEPROM_OFFSET_VERSION);           // read EEPROM version from eeprom
+    if(eeprom_version == 0 || eeprom_version == 255)                    // default init value in EEPROM, format EEPROM to initial state
+    {
+        eeprom_format(eeprom_version);
+    }
+    else if (eeprom_version < EEPROM_VERSION)                          // new EEPROM data structure version
+    {
+        eeprom_format(eeprom_version);
+    }
+    else if (eeprom_version > EEPROM_VERSION)                          // older EEPROM data structure version
     {
         eeprom_format(eeprom_version);
     }
 }
 
+// format EEPROM to initial state and values
 void eeprom_format(byte v)
 {
     eeprom_format_act();
@@ -373,6 +401,7 @@ void eeprom_format(byte v)
     eeprom_set_version();
 }
 
+// set initial active values for sensors to false
 void eeprom_format_act()
 {
     for(byte s = 0; s < SENSORS;s++)
@@ -381,6 +410,7 @@ void eeprom_format_act()
     }
 }
 
+// set initial program for sensors to 0 = a
 void eeprom_format_prg()
 {
     for(byte s = 0; s < SENSORS;s++)
@@ -389,6 +419,7 @@ void eeprom_format_prg()
     }
 }
 
+// reset delay date for sensors
 void eeprom_format_delay()
 {
     for(byte s = 0; s < SENSORS;s++)
@@ -400,6 +431,7 @@ void eeprom_format_delay()
     }
 }
 
+// set initial values for programs 0-4 or a-e
 void eeprom_format_progs()
 {
     for(byte p = 0;p < PROGRAMS;p++)
@@ -409,12 +441,13 @@ void eeprom_format_progs()
     EEPROM.write(EEPROM_OFFSET_PSET, 1);
 }
 
+// set EEPROM structure version
 void eeprom_set_version()
 {
     EEPROM.write(EEPROM_OFFSET_VERSION, EEPROM_VERSION);
 }
 
-//initialize programs if are not saved to EEPROM
+//set initial values for program
 void eeprom_init_progs()
 {
     if(EEPROM.read(EEPROM_OFFSET_PSET) != 1)
@@ -429,6 +462,7 @@ void eeprom_init_progs()
     }
 }
 
+// load programs values from EEPROM
 void eeprom_load_progs(byte p)
 {
     for(byte s = 0;s < DAY_STEP;s++)
@@ -439,6 +473,7 @@ void eeprom_load_progs(byte p)
     }
 }
 
+// write programs to EEPROM
 void eeprom_write_progs(byte p)
 {
     for(byte s = 0;s < DAY_STEP;s++)
@@ -449,6 +484,7 @@ void eeprom_write_progs(byte p)
     }
 }
 
+// set initial values for programs
 void eeprom_reset_progs(byte p)
 {
     for(byte s = 0;s < DAY_STEP;s++)
@@ -459,6 +495,7 @@ void eeprom_reset_progs(byte p)
     }
 }
 
+// load values from EEPROM to variables , example during start
 void eeprom_load()
 {
     // restore active sensors
@@ -479,18 +516,26 @@ void eeprom_load()
        sens_delay[s][i] = EEPROM.read(EEPROM_OFFSET_DELAY + (s * 3) + i);
       }
     }
+    //restore programs values
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      eeprom_load_progs(s);
+    }
 }
 
+// save sensor activation to EEPROM
 void eeprom_save_active(byte c)
 {
   EEPROM.write(EEPROM_OFFSET_ACT + c,sens_active[c]);
 }
 
+// save program for sensor to EEPROM
 void eeprom_save_prg(byte c)
 {
   EEPROM.write(EEPROM_OFFSET_PRG + c,sens_prg[c]);
 }
 
+// save delay for sensor to EEPROM
 void eeprom_save_delay(byte c)
 {
   EEPROM.write(EEPROM_OFFSET_DELAY + (c*3),sens_delay[c][0]);
@@ -498,17 +543,25 @@ void eeprom_save_delay(byte c)
   EEPROM.write(EEPROM_OFFSET_DELAY + (c*3)+2,sens_delay[c][2]);
 }
 
+/*****************************************************************************
+*
+*                           Set termostat menu and functions
+*
+******************************************************************************/
+
+// setting of termostart menu , called by SET key
 void set_termostat()
 {
     boolean goloop = true;
     byte menu_position = 0;
     lcd.clear();
     lcd.setCursor(0,0);
-    lcd.print("PROGRAMS");
+    lcd.print("PROGRAMS");                                  // PROGRAMS set menu
     lcd.setCursor(0,1);
-    lcd.print("TIME");
+    lcd.print("TIME");                                      // TIME set menu
     lcd.setCursor(0,0);
     lcd.blink();
+    // loop for choise from menu
     long etime = millis();
     while ((goloop == true) && ((millis() - etime) < EXIT_TIME))
     {
@@ -551,6 +604,7 @@ void set_termostat()
     lcd.clear();
 }
 
+//set or change predefined programs , called from  set_termostat
 void set_programs()
 {
     boolean goloop = true;
@@ -560,20 +614,20 @@ void set_programs()
     byte d1 = 0;     // roll display temp variable
     //byte d2 = 0;
     lcd.clear();
-    p = select_program();
-    reset_program(p);
-    print_program(p);
+    p = select_program();               // screen for select program
+    reset_program(p);                   // screen for select set or reset program
+    print_program(p);                   // print program for change
     lcd.setCursor(s,r);
     lcd.blink();
     r = 1;      // row for temperature
     long etime = millis();
-    // change times for programs
+    // change temperature for programs
     while ((goloop == true) && ((millis() - etime) < EXIT_TIME*2))
     {
         key = keypad.getKey();
         switch (key)
         {
-            case KEYLEFT:
+            case KEYLEFT:                                  // L R key for change step of day
                 s--;
                 if(s > DAY_STEP) s = DAY_STEP - 1;
                 break;
@@ -581,7 +635,7 @@ void set_programs()
                 s++;
                 if(s > DAY_STEP - 1) s = 0;
                 break;
-            case KEYUP:
+            case KEYUP:                                   // U D key for chnage temperature 0,4-30
                 prg_temp[p][s]++;
                 if(prg_temp[p][s] > MAX_TEMP) prg_temp[p][s] = MAX_TEMP;
                 if(prg_temp[p][s] < MIN_TEMP) prg_temp[p][s] = MIN_TEMP;
@@ -603,7 +657,7 @@ void set_programs()
         if(key > 0) etime = millis();
         lcd.setCursor(s*PROG_SPACE,r);
 
-        //move screen to second part
+        //move screen to second part steps of day
         if((s > 2) & (d1 == 0))
         {
             for(int i = 0;i < 3*PROG_SPACE;i++)
@@ -613,7 +667,7 @@ void set_programs()
             d1 = 1;
         }
 
-        //move screen to first part
+        //move screen to first part steps of day
         if((s < 3) & (d1 == 1))
         {
             for(int i = 0;i < 3*PROG_SPACE;i++)
@@ -642,11 +696,11 @@ void set_programs()
                 s++;
                 if(s > DAY_STEP - 1) s = 0;
                 break;
-            case KEYUP:
+            case KEYUP:                                                     // U D change time in hours
                 prg_time[p][s] += 100;
                 if(prg_time[p][s] > 2300) prg_time[p][s] = 0;
-                // time cannot be larger than next time
-                if(s < DAY_STEP - 1 & prg_time[p][s] > prg_time[p][s + 1]) prg_time[p][s] = prg_time[p][s + 1];
+                // time cannot be larger than next time if next isnt zero
+                if(s < DAY_STEP - 1 && prg_time[p][s] > prg_time[p][s + 1] && prg_time[p][s + 1] != 0 ) prg_time[p][s] = prg_time[p][s + 1];
                 lcd.print(prg_time[p][s]);
                 if(prg_time[p][s] < 1000) lcd.print(' ');
                 break;
@@ -654,7 +708,7 @@ void set_programs()
                 prg_time[p][s] -= 100;
                 if(prg_time[p][s] > 2300) prg_time[p][s] = 2300;
                 // time cannot be smaller than previous times
-                if(s > 0 & prg_time[p][s] < prg_time[p][s - 1]) prg_time[p][s] = prg_time[p][s - 1];
+                if(s > 0 && prg_time[p][s] < prg_time[p][s - 1] && prg_temp[p][s] != 0) prg_time[p][s] = prg_time[p][s - 1];
                 lcd.print(prg_time[p][s]);
                 if(prg_time[p][s] < 1000) lcd.print(' ');
                 break;
@@ -685,10 +739,10 @@ void set_programs()
             d1 = 0;
         }
     }
-
-    eeprom_write_progs(p);
+    eeprom_write_progs(p);                       // write chnaged program to EEPROM
 }
 
+// screen for choise SET or RESET program
 void reset_program(byte p)
 {
     boolean goloop = true;
@@ -728,8 +782,8 @@ void reset_program(byte p)
         case 0:
             break;
         case 1:
-            eeprom_reset_progs(p);
-            eeprom_load_progs(p);
+            eeprom_reset_progs(p);              // set program to initial values in EEPROM
+            eeprom_load_progs(p);               // reload program values from EEPROM
             break;
         case 255:
             break;
@@ -737,6 +791,7 @@ void reset_program(byte p)
     lcd.clear();
 }
 
+// screen for select program
 byte select_program()
 {
     boolean goloop = true;
@@ -777,7 +832,7 @@ byte select_program()
     return p;
 }
 
-// set RTC
+// set time in RTC
 void set_time()
 {
   t = rtc.getTime();
@@ -817,9 +872,10 @@ void set_time()
       if(key > 0) etime = millis();
     //}
   }
-  write_time();
+  write_time();                 // write time into RTC
 }
 
+// write time into RTC with approve
 void write_time()
 {
   boolean goloop = true;
@@ -858,6 +914,7 @@ void write_time()
   }
 }
 
+// select number in set time for RTC
 void select_number(byte k)
 {
   if(cur_pos_r == 0)
@@ -1006,6 +1063,7 @@ void select_number(byte k)
   lcd.setCursor(cur_pos_c,cur_pos_r);
 }
 
+// set value of digit for time
 void set_value(byte k)
 {
   if(cur_pos_r == 0)
@@ -1187,6 +1245,7 @@ void set_value(byte k)
   lcd.blink();
 }
 
+// print time for set
 void print_set_time(byte c, byte r)
 {
   lcd.setCursor(c,r);
@@ -1203,6 +1262,7 @@ void print_set_time(byte c, byte r)
   lcd.print("00");
 }
 
+// print date for set
 void print_set_date(byte c, byte r)
 {
   lcd.setCursor(c,r);
@@ -1220,11 +1280,30 @@ void print_set_date(byte c, byte r)
   lcd.print(t.year);
 }
 
+// screen with program values
+void print_program(byte p)
+{
+  lcd.clear();
+  for(byte s = 0;s < DAY_STEP;s++)
+  {
+    lcd.setCursor(s*PROG_SPACE, 0);
+    //lcd.print(prgInt2Time(prg_time[p][s]));
+    lcd.print(prg_time[p][s]);
+    lcd.print(' ');
+    lcd.setCursor(s*PROG_SPACE, 1);
+    lcd.print(prg_temp[p][s]);
+  }
+}
+
+/*****************************************************************************
+*
+*                      termostat automation functions
+*
+******************************************************************************/
 
 // check if must heating
 void calc_heating()
 {
-    //int ct = getTimeHHMM();               // current time HHMM
     for(byte c = 0; c < SENSORS; c++)          // loop for all chanes
     {
       byte p = sens_prg[c];                    // program for channel
@@ -1256,14 +1335,29 @@ void set_relay()
   if(millis() - relay_oldtime > RELAY_DELAY) // delay for prevent many changes
   {
     relay_oldtime = millis();
-    digitalWrite(RELAY_PIN, ! heating);
+    digitalWrite(RELAY_PIN, ! heating);  // LOW is ON
   }
 }
+
+// get if is delay for sensor start
+boolean isSensorDelay(byte c)
+{
+  t = rtc.getTime();
+  long d = (sens_delay[c][1]*10000)+(sens_delay[c][0]*100)+sens_delay[c][2];
+  long z = (t.mon*10000L)+(t.date*100L)+t.hour;
+  return (d > z) ? true :false;
+}
+
+/*****************************************************************************
+*
+*                     main sensor operations and screen
+*
+******************************************************************************/
 
 //print main screen
 void print_main_screen()
 {
-  for(int c = 0; c < SENSORS; c++)
+  for(int c = 0; c < SENSORS; c++)          // for each chanels/sensors
   {
     switch (c)
     {
@@ -1282,19 +1376,19 @@ void print_main_screen()
     }
 
     lcd.setCursor(lcdcol, lcdrow);
-    print_chanel(c);
+    print_chanel(c);                                        // print chanel number , invert mean active
 
 
-    if(SensorT25::isValid(c))
+    if(SensorT25::isValid(c))                               // print chanel value if is valid
     {
       print_temperature(c,lcdcol+POS_TEMP,lcdrow);
     }
 
-    print_state(c,lcdcol+POS_STATE,lcdrow);
+    print_state(c,lcdcol+POS_STATE,lcdrow);                 // print program of chanel state, off heating - small leter, on heating - uppercase, z - delay
   }
-  print_time(T_MAIN_C, T_MAIN_R);
+  print_time(T_MAIN_C, T_MAIN_R);                           // print current time from RTC
 
-  print_heating(H_MAIN_C,H_MAIN_R);
+  print_heating(H_MAIN_C,H_MAIN_R);                         // heating ON by all channels
 }
 
 //sensor state and seting
@@ -1303,14 +1397,10 @@ void sensor_set(byte c)
   lcd.clear();
   boolean goloop = true;
   print_sensor_state(c);
-  //delay(100);
   long etime = millis();
   while (goloop && ((millis() - etime) < EXIT_TIME))
   {
-    //if (keypad.isKey())
-    //{
       key = keypad.getKey();
-      //keypad.buttonRelease();
       switch (key)
       {
         case KEYLEFT:                        //change program
@@ -1320,15 +1410,10 @@ void sensor_set(byte c)
           print_sensor_state(c);
           break;
         case KEYSET:                        // activate sensor
-          //sens_active[c] = (sens_active[c]) ? false : true;
           sensor_activate(c);
           eeprom_save_active(c);
           print_sensor_state(c);
           break;
-        //case KEYUP:                        // print program
-          //sens_heating[c] = sens_heating[c] ? false : true;
-          //print_program(c);
-          //break;
         case KEYDOWN:                     //back
           goloop = false;
           break;
@@ -1340,15 +1425,7 @@ void sensor_set(byte c)
   lcd.clear();
 }
 
-// get if is delay for sensor start
-boolean isSensorDelay(byte c)
-{
-  t = rtc.getTime();
-  long d = (sens_delay[c][1]*10000)+(sens_delay[c][0]*100)+sens_delay[c][2];
-  long z = (t.mon*10000L)+(t.date*100L)+t.hour;
-  return (d > z) ? true :false;
-}
-
+// screen for activate sensor and set delay time and date
 void sensor_activate(byte c)
 {
   lcd.clear();
@@ -1414,6 +1491,7 @@ void sensor_activate(byte c)
   eeprom_save_delay(c);
 }
 
+// set delay date
 void set_date_delay(byte c, byte k)
 {
   t = rtc.getTime();
@@ -1453,6 +1531,7 @@ void set_date_delay(byte c, byte k)
   }
 }
 
+// set delay time
 void set_time_delay(byte c)
 {
   t = rtc.getTime();
@@ -1468,7 +1547,7 @@ int getTimeHHMM()
   return t.hour*100+t.min;
 }
 
-//print current program step for sensor
+// print current program step for sensor
 void print_prog_step(byte c,byte col, byte row)
 {
   byte p = sens_prg[c];
@@ -1486,6 +1565,7 @@ void print_prog_step(byte c,byte col, byte row)
   lcd.print(prg_temp[p][s]);
 }
 
+// eveluate currently used program step
 byte getProgStep(byte c)
 {
   byte p = sens_prg[c];
@@ -1514,6 +1594,7 @@ byte getProgStep(byte c)
   return i;
 }
 
+// next program step for sensor
 byte getNextProgStep(byte c)
 {
   byte p = sens_prg[c];
@@ -1523,23 +1604,7 @@ byte getNextProgStep(byte c)
   return i;
 }
 
-
-
-void print_program(byte p)
-{
-  lcd.clear();
-  for(byte s = 0;s < DAY_STEP;s++)
-  {
-    lcd.setCursor(s*PROG_SPACE, 0);
-    //lcd.print(prgInt2Time(prg_time[p][s]));
-    lcd.print(prg_time[p][s]);
-    lcd.print(' ');
-    lcd.setCursor(s*PROG_SPACE, 1);
-    lcd.print(prg_temp[p][s]);
-  }
-}
-
-
+// convert time as int number to HH:MM
 String prgInt2Time(int t)
 {
   String h = String(t/100);
@@ -1549,7 +1614,7 @@ String prgInt2Time(int t)
   return h+':'+m;
 }
 
-
+// chnage program of sensor
 void sensor_prog_change(byte c, int k)
 {
   switch (k)
@@ -1573,16 +1638,9 @@ void print_sensor_state(byte c)
 {
   print_sensor_state_R0(c);
   print_prog_step(c,0,1);
-  /*
-  lcd.setCursor(0,1);
-  long d = (sens_delay[c][1]*10000)+(sens_delay[c][0]*100)+sens_delay[c][2];
-  long z = (t.mon*10000L)+(t.date*100L)+t.hour;
-  lcd.print(d);
-  lcd.print(' ');
-  lcd.print(z);
-  */
 }
 
+// print sensor state - row 0
 void print_sensor_state_R0(byte c)
 {
   lcdrow=INF_SENS_R;
@@ -1602,6 +1660,7 @@ void print_sensor_state_R0(byte c)
   lcd.print(getSensorProg(c));
 }
 
+// print sensor state
 void print_sensor_activate(byte c)
 {
   print_sensor_state_R0(c);
@@ -1609,6 +1668,7 @@ void print_sensor_activate(byte c)
   print_sensor_delay(c);
 }
 
+// print delay values for sensor
 void print_sensor_delay(byte c)
 {
   if(sens_delay[c][0] < 10) lcd.print('0');
@@ -1637,6 +1697,7 @@ boolean lcd_refresh()
   }
 }
 
+// print simbol of heating, relay is ON
 void print_heating(byte col, byte row)
 {
   lcd.setCursor(col, row);
