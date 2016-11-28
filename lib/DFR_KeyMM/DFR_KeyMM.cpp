@@ -30,10 +30,8 @@ int DFR_KeyMM::getKey()
  {
     _prevInput = _curInput;               // save old button state
     _curInput = analogRead(_keyPin);      // read new state
-    // ???????
-    _threshold = DEFAULT_THRESHOLD;
-    
-    //if (_curInput == _prevInput)          
+
+    //if (_curInput == _prevInput)
     if (abs(_curInput - _prevInput) < _threshold)          //button input wasn't changed or only few
     {
       _change = false;
