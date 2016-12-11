@@ -6,9 +6,9 @@ Martin Mikala (2016) dev@miklik.cz
 v1.1.0 9.11.2016 - extension for set programs
 v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, more comments
 v1.2.1 11.12.2016 - fix program set (validation for programs)
+v1.3.0 --.12.2016 - open window and close valve detection
 
 todo:
----- 1.11.2016 - open window and close valve detection
 ---- 28.11.2016 - cut app to more libraries
 ---- 28.11.2016 - eeprom migration functions for new EEPROM version
 
@@ -23,8 +23,8 @@ Devices:
 
 // application version
 #define APP_VERSION_MAIN 1
-#define APP_VERSION_RELEASE 2
-#define APP_VERSION_PATCH 1
+#define APP_VERSION_RELEASE 3
+#define APP_VERSION_PATCH 0
 
 #define DAY_STEP 6
 #define PROGRAMS 5
@@ -261,12 +261,14 @@ void setup()
   lcd.setCursor(0, 0);
   lcd.print("3ZoneTermostat");
   lcd.setCursor(0, 1);
-  lcd.print("version ");
+  lcd.print("ver. ");
   lcd.print(APP_VERSION_MAIN);
   lcd.print('.');
   lcd.print(APP_VERSION_RELEASE);
   lcd.print('.');
   lcd.print(APP_VERSION_PATCH);
+  lcd.print(" r");
+  lcd.print(EEPROM_VERSION);
   delay(2000);
   lcd.clear();
 
