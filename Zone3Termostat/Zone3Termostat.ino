@@ -5,6 +5,7 @@ Martin Mikala (2016) dev@miklik.cz
 
 v1.1.0 9.11.2016 - extension for set programs
 v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, more comments
+v1.2.1 11.12.2016 - fix program set (validation for programs)
 
 todo:
 ---- 1.11.2016 - open window and close valve detection
@@ -23,10 +24,14 @@ Devices:
 // application version
 #define APP_VERSION_MAIN 1
 #define APP_VERSION_RELEASE 2
-#define APP_VERSION_PATCH 0
+#define APP_VERSION_PATCH 1
 
 #define DAY_STEP 6
 #define PROGRAMS 5
+#define MIN_TEMP 5
+#define MAX_TEMP 30
+#define UNFREEZ_TEMP MIN_TEMP - 2
+
 
 // RF sensors https://github.com/miklik72/SensorT25/
 #define IRQ_PIN 2      // RF input with irq
@@ -151,8 +156,8 @@ boolean rom_change = false;
 #define STATE_SENS_C 11
 #define PRG_SENS_C 15
 #define EXIT_TIME 10000           //time for automatic exit to main screen in ms
-#define MAX_TEMP 30               // Max temperature set
-#define MIN_TEMP 4                // Min temperature
+//#define MAX_TEMP 30               // Max temperature set
+//#define MIN_TEMP 4                // Min temperature
     // Time set scree
 #define TIME_ROW 0
 #define TIME_HCOL 4
@@ -192,6 +197,7 @@ long close_valve_time[SENSORS]={0,0,0};                     // detect close valv
 //next
 #define PROG_SPACE 5                    // space between values in program screen
 
+
 // Application variables
 String act_screen = "main";
 boolean sens_active[SENSORS]={false,false,false};         // is sensor control active
@@ -216,7 +222,6 @@ const unsigned int init_time[PROGRAMS][DAY_STEP] =        // time points for pro
   {600,900,1800,2000,2200,2300},
   {100,0,0,0,0,0}
 };
-
 byte prg_temp[PROGRAMS][DAY_STEP] =                           // temperature for programs
 {
   {23,21,23,20,0,0},
@@ -309,6 +314,7 @@ void loop()
 /*****************************************************************************
 *
 *        functions for recognize open window or closed radiators valve
+*                                INACTIVE
 *
 ******************************************************************************/
 
@@ -635,18 +641,20 @@ void set_programs()
                 s++;
                 if(s > DAY_STEP - 1) s = 0;
                 break;
-            case KEYUP:                                   // U D key for chnage temperature 0,4-30
+            case KEYUP:                                   // U D key for chnage temperature 0 and MIN_TEMP to MAX_TEMP
                 prg_temp[p][s]++;
-                if(prg_temp[p][s] > MAX_TEMP) prg_temp[p][s] = MAX_TEMP;
-                if(prg_temp[p][s] < MIN_TEMP) prg_temp[p][s] = MIN_TEMP;
+                //if(prg_temp[p][s] > MAX_TEMP) prg_temp[p][s] = MAX_TEMP;
+                if(prg_temp[p][s] > MAX_TEMP) prg_temp[p][s] = 0;
+                if(prg_temp[p][s] < MIN_TEMP && prg_temp[p][s] != 0) prg_temp[p][s] = MIN_TEMP;
+                if(s == 0 && prg_temp[p][s] == 0) prg_temp[p][s] = MIN_TEMP;
                 lcd.print(prg_temp[p][s]);
                 if(prg_temp[p][s] < 10) lcd.print(' ');
                 break;
             case KEYDOWN:
                 prg_temp[p][s]--;
                 if(prg_temp[p][s] < MIN_TEMP) prg_temp[p][s] = 0;
-                if(prg_temp[p][s] > MAX_TEMP) prg_temp[p][s] = 0;
-                if(s == 0 & prg_temp[p][s] == 0) prg_temp[p][s] = MIN_TEMP;
+                if(prg_temp[p][s] > MAX_TEMP) prg_temp[p][s] = MAX_TEMP;
+                if(s == 0 && prg_temp[p][s] == 0) prg_temp[p][s] = MAX_TEMP;
                 lcd.print(prg_temp[p][s]);
                 if(prg_temp[p][s] < 10) lcd.print(' ');
                 break;
@@ -698,17 +706,29 @@ void set_programs()
                 break;
             case KEYUP:                                                     // U D change time in hours
                 prg_time[p][s] += 100;
-                if(prg_time[p][s] > 2300) prg_time[p][s] = 0;
+                program_time_validation(p,s);
+                //if(prg_time[p][s] > 2300) prg_time[p][s] = 0;
                 // time cannot be larger than next time if next isnt zero
-                if(s < DAY_STEP - 1 && prg_time[p][s] > prg_time[p][s + 1] && prg_time[p][s + 1] != 0 ) prg_time[p][s] = prg_time[p][s + 1];
+                //if(s < DAY_STEP - 1 && prg_time[p][s] >= prg_time[p][s + 1] && prg_time[p][s + 1] != 0 ) prg_time[p][s] = prg_time[p][s + 1]-100;
+                // time cannot be smaller than previous times
+                //if(s > 0 && prg_time[p][s] <= prg_time[p][s - 1]) prg_time[p][s] = prg_time[p][s - 1]+100;
+                // step 0 cannot be 0
+                //if(s == 0 && prg_time[p][s] == 0) prg_time[p][s] = 100;
                 lcd.print(prg_time[p][s]);
                 if(prg_time[p][s] < 1000) lcd.print(' ');
                 break;
             case KEYDOWN:
                 prg_time[p][s] -= 100;
-                if(prg_time[p][s] > 2300) prg_time[p][s] = 2300;
+                program_time_validation(p,s);
+                // time cannot be larger than 2300
+                //if(prg_time[p][s] > 2300) prg_time[p][s] = 2300;
                 // time cannot be smaller than previous times
-                if(s > 0 && prg_time[p][s] < prg_time[p][s - 1] && prg_temp[p][s] != 0) prg_time[p][s] = prg_time[p][s - 1];
+                //if(s > 0 && prg_time[p][s] < prg_time[p][s - 1] && prg_temp[p][s] != 0) prg_time[p][s] = prg_time[p][s - 1];
+                //if(s > 0 && prg_time[p][s] <= prg_time[p][s - 1]) prg_time[p][s] = prg_time[p][s - 1]+100;
+                // time cannot be larger than next time if next isnt zero
+                //if(s < DAY_STEP - 1 && prg_time[p][s] >= prg_time[p][s + 1] && prg_time[p][s + 1] != 0 ) prg_time[p][s] = prg_time[p][s + 1]-100;
+                // step 0 cannot be 0
+                //if(s == 0 && prg_time[p][s] == 0) prg_time[p][s] = 100;
                 lcd.print(prg_time[p][s]);
                 if(prg_time[p][s] < 1000) lcd.print(' ');
                 break;
@@ -739,7 +759,64 @@ void set_programs()
             d1 = 0;
         }
     }
+    program_end_validation(p);                   // validate values in program
     eeprom_write_progs(p);                       // write chnaged program to EEPROM
+}
+
+// time validation for programs
+void program_time_validation(byte p, byte s)
+{
+    if(prg_time[p][s] > 2300) prg_time[p][s] = 0;
+    if(s == 0)
+    {
+        // step 0 cannot be 0
+        if(prg_time[p][s] == 0) prg_time[p][s] = 100;
+    }
+
+    if(s < DAY_STEP - 1)
+    {
+        // time cannot be larger than next time if next isnt zero
+        if(prg_time[p][s] >= prg_time[p][s + 1] && prg_time[p][s + 1] != 0) prg_time[p][s] = prg_time[p][s + 1]-100;
+    }
+
+    if(s > 0)
+    {
+        // time cannot be smaller than previous times, yero is possible for turno off step
+        if(prg_time[p][s] <= prg_time[p][s - 1] && prg_time[p][s + 1] != 0) prg_time[p][s] = prg_time[p][s - 1]+100;
+    }
+}
+
+void program_end_validation(byte p)
+{
+    // remove time for zero temperature and next
+    boolean x = true;
+    for(byte s = 0;s < DAY_STEP;s++)
+    {
+        //check valid temperature
+        if(prg_temp[p][s] != 0 && (prg_temp[p][s] < MIN_TEMP || prg_temp[p][s] > MAX_TEMP)) prg_temp[p][s] = 0;
+        // step 0 cannot be 0 and temperature cannot be lower than MIN_TEMP
+        if(s == 0)
+        {
+            if(prg_temp[p][s] < MIN_TEMP) prg_temp[p][s] = MIN_TEMP;
+            if(prg_time[p][s] == 0) prg_time[p][s] = 100;
+        }
+        else
+        {
+            //check valid time, if in left is lower
+            if(prg_time[p][s] <= prg_time[p][s-1]) prg_temp[p][s] = 0;
+            //first off step, all other will be off too
+            if(prg_temp[p][s] == 0 && x)
+            {
+                x = false;
+            }
+            if(!x)
+            {
+                prg_time[p][s] = 0;
+                prg_temp[p][s] = 0;
+            }
+
+        }
+    }
 }
 
 // screen for choise SET or RESET program
@@ -1318,8 +1395,8 @@ void calc_heating()
         sens_heating[c] = false;
       }
 
-      //antifreez - under 5°C
-      if(SensorT25::getTemperature(c) < 5 && SensorT25::isValid(c)) sens_heating[c] = true;
+      //antifreez - under unfreez temperature
+      if(SensorT25::getTemperature(c) < UNFREEZ_TEMP && SensorT25::isValid(c)) sens_heating[c] = true;
 
     }
     heating = false;
@@ -1578,7 +1655,7 @@ byte getProgStep(byte c)
       break;
     }
   }
-  if(i == 0)
+  if(i == 0)  // if is got step 0 go during program backward to last valid (not null)
   {
     i = DAY_STEP - 1;
     for(int j = i;j >= 0; j--)
