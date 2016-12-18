@@ -6,6 +6,7 @@ Martin Mikala (2016) dev@miklik.cz
 v1.1.0 9.11.2016 - extension for set programs
 v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, more comments
 v1.2.1 11.12.2016 - fix program set (validation for programs)
+v1.2.2 18.12.2016 - remove all routines related to temp history
 
 todo:
 ---- 1.11.2016 - open window and close valve detection
@@ -24,7 +25,7 @@ Devices:
 // application version
 #define APP_VERSION_MAIN 1
 #define APP_VERSION_RELEASE 2
-#define APP_VERSION_PATCH 1
+#define APP_VERSION_PATCH 2
 
 #define DAY_STEP 6
 #define PROGRAMS 5
@@ -282,7 +283,7 @@ void setup()
   eeprom_load();
 
   //init variable
-  reset_temp_hist_all();
+  //reset_temp_hist_all();
 }
 
 void loop()
