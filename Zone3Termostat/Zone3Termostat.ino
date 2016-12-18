@@ -179,7 +179,7 @@ byte cur_pos_r = TIME_ROW;
 
 // watch heating issues
 #define TEMP_HIST_STEPS 10                                  // keep 10 last tepm
-#define TEMP_HIST_STEP 2                                    // time step for save temperature in minutes
+#define TEMP_HIST_STEP 1                                    // time step for save temperature in minutes
 #define TEMP_HIST_TIME TEMP_HIST_STEPS * TEMP_HIST_STEP     // whole time history keeping
 #define DELTA_WINDOW_OPEN_C 2                               // temp delta for detect open window
 #define DELTA_WINDOW_OPEN_TIME 5                            // time for detect open window in minutes
@@ -187,7 +187,7 @@ byte cur_pos_r = TIME_ROW;
 #define DELTA_VALVE_CLOSE_C 1                               // temp delta for detect close valve
 #define DELTA_VALVE_CLOSE_TIME 10                           // time for detect close valve in minutes
 #define HEATING_PAUSE_VALVE 30                              // how long will be heating stopped in minutes
-byte prg_temp_hist[SENSORS][TEMP_HIST_STEPS];              // temperature history for detect heating pause
+float prg_temp_hist[SENSORS][TEMP_HIST_STEPS];              // temperature history for detect heating pause
 long temp_hist_last_time = millis();                         // timestamp for calculate next temperature record
 byte open_window[SENSORS]={0,0,0};                          // detect open window
 byte close_valve[SENSORS]={0,0,0};                          // detect close valve
@@ -244,6 +244,8 @@ boolean refreshtime = false;
 
 void setup()
 {
+  //Serial console
+  Serial.begin(9600);
   // RF sensors
   SensorT25::enable(IRQ_PIN);
   //LCD
@@ -291,7 +293,7 @@ void loop()
 {
     calc_heating();
     set_relay();
-    //save_temp_history();
+    save_temp_history();
 
     key = keypad.getKey();
     switch (key)
@@ -323,12 +325,16 @@ void loop()
 //save few last temperatures for sensors in interval
 void save_temp_history()
 {
-    if(delta_minutes(temp_hist_last_time) > TEMP_HIST_STEP)
+    //lcd.setCursor(1,1);
+    //lcd.print(delta_minutes(temp_hist_last_time));
+    if(delta_minutes(temp_hist_last_time) >= TEMP_HIST_STEP)
     {
             shift_temp_hist();
             for(byte s = 0;s < SENSORS;s++)
             {
                 prg_temp_hist[s][0] = SensorT25::getTemperature(s);
+                //lcd.setCursor(1,1);
+                //lcd.print(prg_temp_hist[0][0],1);
             }
             temp_hist_last_time = millis();
     }
@@ -339,10 +345,21 @@ void shift_temp_hist()
 {
     for(byte s = 0;s < SENSORS;s++)
     {
-        for(byte i = TEMP_HIST_STEPS - 2;i >= 0;i--)
+        Serial.print(s);
+        Serial.print('-');
+        for(byte i = TEMP_HIST_STEPS - 1;i > 0;i--)
         {
-            prg_temp_hist[s][i+1] = prg_temp_hist[s][i];
+            prg_temp_hist[s][i] = prg_temp_hist[s][i-1];
+            Serial.print(i);
+            Serial.print('_');
+            Serial.print(prg_temp_hist[s][i]);
+            Serial.print(',');
         }
+        Serial.print(0);
+        Serial.print('_');
+        Serial.print(prg_temp_hist[s][0]);
+        Serial.print(',');
+        Serial.println();
     }
 }
 
@@ -360,17 +377,17 @@ int millis2min(long m)
 
 void reset_temp_hist_all()
 {
-    for(byte p = 0; p < PROGRAMS; p++)
+    for(byte s = 0; s < SENSORS; s++)
     {
-            reset_temp_hist(p);
+            reset_temp_hist(s);
     }
 }
 
-void reset_temp_hist(byte p)
+void reset_temp_hist(byte s)
 {
         for(byte i = 0;i < TEMP_HIST_STEPS;i++)
         {
-            prg_temp_hist[p][i] = 0;
+            prg_temp_hist[s][i] = 0.0f;
         }
 }
 
@@ -1731,6 +1748,7 @@ void print_sensor_state_R0(byte c)
   lcd.setCursor(lcdcol, lcdrow);
   lcd.print(SensorT25::getValueAge(c));
   lcd.print('s');
+  lcd.print(prg_temp_hist[c][0],1);
   lcdcol=PRG_SENS_C-2;
   lcd.setCursor(lcdcol, lcdrow);
   if(isSensorDelay(c)) lcd.print('Z');
