@@ -8,14 +8,16 @@ v1.1.0 9.11.2016 - extension for set programs
 v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, more comments
 v1.2.1 11.12.2016 - fix program set (validation for programs)
 v1.3.0 1.1.2017 - open window detection
-
+v1.3.1 1.1.2017 - fixed temperature history
 
 
 todo:
 ---- 28.11.2016 - cut app to more libraries
 ---- 28.11.2016 - eeprom migration functions for new EEPROM version
 ---- 18.12.2016 - debuging to serial console
-
+----   1.1.2017 - merge{clean} variables c & s as c  - for channel or sensor and use s for program step
+----   1.1.2017 - extra button for activate sensor
+----   1.1.2017 - add remote valve control
 
 Devices:
 1x Arduino UNO
@@ -29,7 +31,7 @@ Devices:
 // application version
 #define APP_VERSION_MAIN 1
 #define APP_VERSION_RELEASE 3
-#define APP_VERSION_PATCH 0
+#define APP_VERSION_PATCH 1
 
 #define DAY_STEP 6
 #define PROGRAMS 5
@@ -488,7 +490,7 @@ void setHeatingPause(byte s)
         sens_heating_pause[s] = HEATING_PAUSE_WINDOW;
         //sens_heating_pause_temp0[s] = prg_temp_hist[s][0];                  //save temperature when pause start
         //sens_heating_pause_tempB[s] = prg_temp_hist[s][temp_back_step_window];     //save back related temperature for pause start
-        //sens_heating_pause_active[s] = true;                                   // pause is activated
+        sens_heating_pause_active[s] = true;                                   // pause is activated
     }
     /*
     if(sens_heating[s] && (sens_heating_pause[s] == 0) && isHeadClose(s))
@@ -521,10 +523,9 @@ void countdownHeatingPause()
             sens_heating_pause[s]--;
         }
         // turn of heatin pause status and reset history
-        //if(sens_heating_pause[s] == 0 && sens_heating_pause_active[s] == true)
-        if(sens_heating_pause[s] == 0)
+        if(sens_heating_pause[s] == 0 && sens_heating_pause_active[s] == true)
         {
-            //sens_heating_pause_active[s] = false;
+            sens_heating_pause_active[s] = false;
             reset_temp_hist(s);
         }
     }
@@ -1547,6 +1548,20 @@ void calc_heating()
 {
     for(byte c = 0; c < SENSORS; c++)          // loop for all chanes
     {
+        //byte p = sens_prg[c];                    // program for channel
+        //byte s = getProgStep(c);
+      //if (prg_temp[p][s] > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && ! isSensorDelay(c)) // prog temperature is higher and sensor is active
+      if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && ! isSensorDelay(c))
+      {
+        sens_heating[c] = true;
+      }
+      else
+      {
+        sens_heating[c] = false;
+      }
+
+      //antifreez - under unfreez temperature
+      if(SensorT25::getTemperature(c) < UNFREEZ_TEMP && SensorT25::isValid(c)) sens_heating[c] = true;
     }
     heating = false;
     for(byte c = 0; c < SENSORS; c++)          // loop for all chanels
