@@ -8,7 +8,7 @@ v1.1.0 9.11.2016 - extension for set programs
 v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, more comments
 v1.2.1 11.12.2016 - fix program set (validation for programs)
 v1.3.0 1.1.2017 - open window detection
-v1.3.1 1.1.2017 - fixed temperature history
+v1.3.1 1.1.2017 - fixed temperature history and calc heating
 
 
 todo:
@@ -1551,7 +1551,7 @@ void calc_heating()
         //byte p = sens_prg[c];                    // program for channel
         //byte s = getProgStep(c);
       //if (prg_temp[p][s] > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && ! isSensorDelay(c)) // prog temperature is higher and sensor is active
-      if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && ! isSensorDelay(c))
+      if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)) && (! isSensorPaused(c)))
       {
         sens_heating[c] = true;
       }
