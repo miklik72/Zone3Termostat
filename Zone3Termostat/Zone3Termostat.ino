@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Math.h>
 
 /* 3 zone wireless termostat used 433Mhz temperature sensors T25
 Martin Mikala (2016) dev@miklik.cz
@@ -6,11 +7,13 @@ Martin Mikala (2016) dev@miklik.cz
 v1.1.0 9.11.2016 - extension for set programs
 v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, more comments
 v1.2.1 11.12.2016 - fix program set (validation for programs)
-v1.3.0 --.12.2016 - open window and close valve detection
+v1.3.0 1.1.2017 - open window detection
 
 todo:
 ---- 28.11.2016 - cut app to more libraries
 ---- 28.11.2016 - eeprom migration functions for new EEPROM version
+---- 18.12.2016 - debuging to serial console
+
 
 Devices:
 1x Arduino UNO
@@ -179,14 +182,15 @@ byte cur_pos_r = TIME_ROW;
 
 // watch heating issues
 #define TEMP_HIST_STEPS 10                                  // keep 10 last tepm
-#define TEMP_HIST_STEP 1                                    // time step for save temperature in minutes
+#define TEMP_HIST_STEP 3                                    // time step for save temperature in minutes
 #define TEMP_HIST_TIME TEMP_HIST_STEPS * TEMP_HIST_STEP     // whole time history keeping
-#define DELTA_WINDOW_OPEN_C 2                               // temp delta for detect open window
+#define DELTA_WINDOW_OPEN_C 1                               // temp delta for detect open window
 #define DELTA_WINDOW_OPEN_TIME 5                            // time for detect open window in minutes
 #define HEATING_PAUSE_WINDOW 30                             // how long will be heating stopped
 #define DELTA_VALVE_CLOSE_C 1                               // temp delta for detect close valve
-#define DELTA_VALVE_CLOSE_TIME 10                           // time for detect close valve in minutes
+#define DELTA_VALVE_CLOSE_TIME 15                           // time for detect close valve in minutes
 #define HEATING_PAUSE_VALVE 30                              // how long will be heating stopped in minutes
+#define TEMP_LIMIT 1                                        // control temperature + - wanted temperature
 float prg_temp_hist[SENSORS][TEMP_HIST_STEPS];              // temperature history for detect heating pause
 long temp_hist_last_time = millis();                         // timestamp for calculate next temperature record
 byte open_window[SENSORS]={0,0,0};                          // detect open window
@@ -202,11 +206,18 @@ long close_valve_time[SENSORS]={0,0,0};                     // detect close valv
 String act_screen = "main";
 boolean sens_active[SENSORS]={false,false,false};         // is sensor control active
 boolean sens_heating[SENSORS]={false,false,false};        // heating for sensor
+byte sens_heating_pause[SENSORS]={0,0,0};                 // countdown heating stop when window open  or closed valve are detected, in minutes
+boolean sens_heating_pause_active[SENSORS]={false,false,false};  // heating pause was activated
+float sens_heating_pause_temp0[SENSORS]={0,0,0};          //save temperature when pause start
+float sens_heating_pause_tempB[SENSORS]={0,0,0};          //save back related temperature for pause start
+byte temp_back_step_window = (byte)ceil( (float)DELTA_WINDOW_OPEN_TIME / (float)TEMP_HIST_STEP);    // how old temp we are using for comparation if window is open
+byte temp_back_step_head = (byte)ceil( (float)DELTA_VALVE_CLOSE_TIME / (float)TEMP_HIST_STEP);    // how old temp we are using for comparation if radiator head is closed, temperature is not growing
 long sens_delay[SENSORS][3]={{0,0,0},{0,0,0},{0,0,0}};    // activate sensor delay DDMMHH (Day Month Hour)
 boolean heating = false;                                  // control relay for turn on/off heating
 byte sens_prg[SENSORS]={2,3,1};                           // number of program for sensor
+long time_min_count = millis();                           // variable fo count heating pause
 
-const byte init_temp[PROGRAMS][DAY_STEP] =                           // temperature for programs
+const byte init_temp[PROGRAMS][DAY_STEP] =                // temperature for programs
 {
   {23,21,23,20,0,0},
   {22,20,21,18,0,0},
@@ -242,6 +253,11 @@ unsigned int prg_time[PROGRAMS][DAY_STEP] =        // time points for programs
 unsigned long deltime = 0;
 boolean refreshtime = false;
 
+/*****************************************************************************
+*
+*                          SETUP / LOOP
+*
+******************************************************************************/
 void setup()
 {
   //Serial console
@@ -293,7 +309,7 @@ void loop()
 {
     calc_heating();
     set_relay();
-    save_temp_history();
+    temp_history();
 
     key = keypad.getKey();
     switch (key)
@@ -318,25 +334,78 @@ void loop()
 /*****************************************************************************
 *
 *        functions for recognize open window or closed radiators valve
-*                                INACTIVE
 *
 ******************************************************************************/
+
+// execute every TEMP_HIST_STEP
+void temp_history()
+{
+    // execute with history step time
+    if(delta_minutes(temp_hist_last_time) >= TEMP_HIST_STEP)
+    {
+        save_temp_history();
+        checkHeatingPause();
+        sprint_temp_hist();
+
+        temp_hist_last_time = millis();
+    }
+
+    //execute every minutes
+    if(delta_minutes(time_min_count) >= 1)
+    {
+        countdownHeatingPause();
+
+        time_min_count = millis();
+    }
+
+}
+
+void sprint_temp_hist()
+{
+    Serial.print("TEMP HIST:");
+    Serial.println(rtc.getTimeStr());
+    for(byte s = 0;s < SENSORS;s++)
+    {
+        Serial.print(s);
+        Serial.print('-');
+        for(byte i = 0;i < TEMP_HIST_STEPS;i++)
+        {
+            Serial.print(i);
+            Serial.print('_');
+            Serial.print(prg_temp_hist[s][i]);
+            Serial.print(',');
+        }
+        Serial.print(" T ");
+        Serial.print(SensorT25::getTemperature(s));
+        Serial.print(" - ");
+        Serial.print(getProgTempCurrent(s));
+        Serial.print(" W ");
+        Serial.print(temp_back_step_window);
+        Serial.print(" - ");
+        Serial.print(prg_temp_hist[s][temp_back_step_window] - prg_temp_hist[s][0]);
+        Serial.print(" - ");
+        Serial.print(isWindowOpen(s));
+        Serial.print(" , V ");
+        Serial.print(temp_back_step_head);
+        Serial.print(" - ");
+        Serial.print(prg_temp_hist[s][temp_back_step_head] - prg_temp_hist[s][0]);
+        Serial.print(" - ");
+        Serial.print(isHeadClose(s));
+        Serial.print(" : ");
+        Serial.print(sens_heating_pause[s]);
+        Serial.print(" - ");
+        Serial.print(sens_heating[s]);
+        Serial.println();
+    }
+}
 
 //save few last temperatures for sensors in interval
 void save_temp_history()
 {
-    //lcd.setCursor(1,1);
-    //lcd.print(delta_minutes(temp_hist_last_time));
-    if(delta_minutes(temp_hist_last_time) >= TEMP_HIST_STEP)
+    shift_temp_hist();
+    for(byte s = 0;s < SENSORS;s++)
     {
-            shift_temp_hist();
-            for(byte s = 0;s < SENSORS;s++)
-            {
-                prg_temp_hist[s][0] = SensorT25::getTemperature(s);
-                //lcd.setCursor(1,1);
-                //lcd.print(prg_temp_hist[0][0],1);
-            }
-            temp_hist_last_time = millis();
+        prg_temp_hist[s][0] = SensorT25::getTemperature(s);
     }
 }
 
@@ -345,24 +414,14 @@ void shift_temp_hist()
 {
     for(byte s = 0;s < SENSORS;s++)
     {
-        Serial.print(s);
-        Serial.print('-');
         for(byte i = TEMP_HIST_STEPS - 1;i > 0;i--)
         {
             prg_temp_hist[s][i] = prg_temp_hist[s][i-1];
-            Serial.print(i);
-            Serial.print('_');
-            Serial.print(prg_temp_hist[s][i]);
-            Serial.print(',');
         }
-        Serial.print(0);
-        Serial.print('_');
-        Serial.print(prg_temp_hist[s][0]);
-        Serial.print(',');
-        Serial.println();
     }
 }
 
+// calc minutes from parameter time
 unsigned int delta_minutes(unsigned long last_lime)
 {
     unsigned long ctime = millis();
@@ -370,11 +429,13 @@ unsigned int delta_minutes(unsigned long last_lime)
     return millis2min(delta_time);
 }
 
+// convert miliseconds to minutes
 int millis2min(long m)
 {
     return m/60000;
 }
 
+// reset all temperature history
 void reset_temp_hist_all()
 {
     for(byte s = 0; s < SENSORS; s++)
@@ -383,12 +444,94 @@ void reset_temp_hist_all()
     }
 }
 
+// reset one sensor history
 void reset_temp_hist(byte s)
 {
         for(byte i = 0;i < TEMP_HIST_STEPS;i++)
         {
             prg_temp_hist[s][i] = 0.0f;
         }
+}
+
+//check is temperature go down for room where is heating
+boolean isWindowOpen(byte s)
+{
+        // true if delta temp is larger then treshold and older temp is not 0
+        if((prg_temp_hist[s][temp_back_step_window] != 0) && (prg_temp_hist[s][temp_back_step_window] - prg_temp_hist[s][0]) > DELTA_WINDOW_OPEN_C)
+        {
+            return true;
+        }
+        else return false;
+}
+
+//check is temperature go down for room where is heating
+boolean isHeadClose(byte s)
+{
+        // true if delta temp is smaller then treshold and comparasion temperature is not 0
+        if((prg_temp_hist[s][temp_back_step_head] != 0) && ((prg_temp_hist[s][temp_back_step_head] - prg_temp_hist[s][0]) < DELTA_VALVE_CLOSE_C) && (getProgTempCurrent(s) - TEMP_LIMIT > SensorT25::getTemperature(s)))
+        {
+            return true;
+        }
+        else return false;
+}
+
+
+// set it only if room is heating and heatin pause is not set and delta temp is larger then treshold
+void setHeatingPause(byte s)
+{
+    Serial.print("BP setHP "); Serial.print(s); Serial.print(' ');
+    if(sens_heating[s] && (sens_heating_pause[s] == 0) && isWindowOpen(s))
+    {
+        Serial.print("true W");
+        sens_heating_pause[s] = HEATING_PAUSE_WINDOW;
+        //sens_heating_pause_temp0[s] = prg_temp_hist[s][0];                  //save temperature when pause start
+        //sens_heating_pause_tempB[s] = prg_temp_hist[s][temp_back_step_window];     //save back related temperature for pause start
+        //sens_heating_pause_active[s] = true;                                   // pause is activated
+    }
+    /*
+    if(sens_heating[s] && (sens_heating_pause[s] == 0) && isHeadClose(s))
+    {
+        Serial.print("true V");
+        sens_heating_pause[s] = HEATING_PAUSE_VALVE;
+        sens_heating_pause_temp0[s] = prg_temp_hist[s][0];                  //save temperature when pause start
+        sens_heating_pause_tempB[s] = prg_temp_hist[s][temp_back_step_window];     //save back related temperature for pause start
+        sens_heating_pause_active[s] = true;                                   // pause is activated
+    }
+    */
+}
+
+// check all sensors for heating pause
+void checkHeatingPause()
+{
+    for(byte s = 0; s < SENSORS; s++)
+    {
+            setHeatingPause(s);
+    }
+}
+
+// count down heating pauses
+void countdownHeatingPause()
+{
+    for(byte s = 0; s < SENSORS; s++)
+    {
+        if(sens_heating_pause[s] != 0)
+        {
+            sens_heating_pause[s]--;
+        }
+        // turn of heatin pause status and reset history
+        //if(sens_heating_pause[s] == 0 && sens_heating_pause_active[s] == true)
+        if(sens_heating_pause[s] == 0)
+        {
+            //sens_heating_pause_active[s] = false;
+            reset_temp_hist(s);
+        }
+    }
+}
+
+// get if is sensor paused
+boolean isSensorPaused(byte s)
+{
+    return (sens_heating_pause[s] > 0) ? true :false;
 }
 
 /*****************************************************************************
@@ -1402,21 +1545,6 @@ void calc_heating()
 {
     for(byte c = 0; c < SENSORS; c++)          // loop for all chanes
     {
-      byte p = sens_prg[c];                    // program for channel
-      byte s = getProgStep(c);
-
-      if (prg_temp[p][s] > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && ! isSensorDelay(c)) // prog temperature is higher and sensor is active
-      {
-        sens_heating[c] = true;
-      }
-      else
-      {
-        sens_heating[c] = false;
-      }
-
-      //antifreez - under unfreez temperature
-      if(SensorT25::getTemperature(c) < UNFREEZ_TEMP && SensorT25::isValid(c)) sens_heating[c] = true;
-
     }
     heating = false;
     for(byte c = 0; c < SENSORS; c++)          // loop for all chanels
@@ -1700,6 +1828,12 @@ byte getNextProgStep(byte c)
   return i;
 }
 
+//get currently wanted temperature
+int getProgTempCurrent(byte c)
+{
+    return prg_temp[sens_prg[c]][getProgStep(c)];
+}
+
 // convert time as int number to HH:MM
 String prgInt2Time(int t)
 {
@@ -1748,7 +1882,8 @@ void print_sensor_state_R0(byte c)
   lcd.setCursor(lcdcol, lcdrow);
   lcd.print(SensorT25::getValueAge(c));
   lcd.print('s');
-  lcd.print(prg_temp_hist[c][0],1);
+  lcd.print(sens_heating_pause[c]);
+  lcd.print('m');
   lcdcol=PRG_SENS_C-2;
   lcd.setCursor(lcdcol, lcdrow);
   if(isSensorDelay(c)) lcd.print('Z');
@@ -1814,8 +1949,12 @@ void print_heating(byte col, byte row)
 //print sensor state and program
 void print_state(byte c, byte col, byte row)
 {
-  lcd.setCursor(col, row);
-  lcd.print((isSensorDelay(c)) ? 'z' : getSensorProg(c));
+    char x;
+    lcd.setCursor(col, row);
+    if(isSensorDelay(c)) x = 'z';
+    else if(isSensorPaused(c)) x = 'p';
+    else x = getSensorProg(c);
+    lcd.print(x);
 }
 
 // Return char for program number A or a to E or e
