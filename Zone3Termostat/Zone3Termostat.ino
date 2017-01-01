@@ -9,6 +9,8 @@ v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, mo
 v1.2.1 11.12.2016 - fix program set (validation for programs)
 v1.3.0 1.1.2017 - open window detection
 
+
+
 todo:
 ---- 28.11.2016 - cut app to more libraries
 ---- 28.11.2016 - eeprom migration functions for new EEPROM version
@@ -302,7 +304,7 @@ void setup()
   eeprom_load();
 
   //init variable
-  reset_temp_hist_all();
+  //reset_temp_hist_all();
 }
 
 void loop()
