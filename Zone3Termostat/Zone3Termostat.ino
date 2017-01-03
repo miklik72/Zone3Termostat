@@ -128,7 +128,7 @@ long relay_oldtime = millis();
 
 //EEPROM
 #include <EEPROM.h>
-#define EEPROM_VERSION 11
+#define EEPROM_VERSION 12
 #define EEPROM_OFFSET 0                                   // ERRPROM OFFSET
 #define EEPROM_OFFSET_VERSION EEPROM_OFFSET               // version of EEPROM data structure
 #define EEPROM_OFFSET_DATA EEPROM_OFFSET + 1              // offset for data start
@@ -273,6 +273,10 @@ void setup()
   Serial.begin(9600);
   // RF sensors
   SensorT25::enable(IRQ_PIN);
+
+  //RTC
+  rtc.begin();
+
   //LCD
   // set up the LCD's number of columns and rows
   lcd.createChar(0, invert1);
@@ -292,22 +296,22 @@ void setup()
   delay(500);
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("ver. ");
+  lcd.print("v");
   lcd.print(APP_VERSION_MAIN);
   lcd.print('.');
   lcd.print(APP_VERSION_RELEASE);
   lcd.print('.');
   lcd.print(APP_VERSION_PATCH);
-  lcd.print(" r");
+  lcd.print("_");
   lcd.print(EEPROM_VERSION);
   lcd.setCursor(0, 1);
-  lcd.print("boots:");
+  lcd.print("B:");
   lcd.print(eeprom_read_boots());
-  delay(1000);
-  lcd.clear();
+  lcd.print(" T:");
+  lcd.print(eeprom_read_boottime());
 
-  //RTC
-  rtc.begin();
+  delay(1500);
+  lcd.clear();
 
   //relay
   pinMode(RELAY_PIN, OUTPUT);
@@ -569,20 +573,27 @@ void eeprom_init()
     byte eeprom_version = EEPROM.read(EEPROM_OFFSET_VERSION);           // read EEPROM version from eeprom
     if(eeprom_version == 0 || eeprom_version == 255)                    // default init value in EEPROM, format EEPROM to initial state
     {
-        eeprom_format(eeprom_version);
+        //eeprom_format(eeprom_version);
+        eeprom_format();
     }
     else if (eeprom_version < EEPROM_VERSION)                          // new EEPROM data structure version
     {
-        //eeprom_format(eeprom_version);
+        if(eeprom_version < 12)
+        {
+            eeprom_format_boot();   // chnage word dword read/write EEPROM by eeprom.h function
+        }
+        eeprom_set_version();
     }
     else if (eeprom_version > EEPROM_VERSION)                          // older EEPROM data structure version
     {
-        eeprom_format(eeprom_version);
+        //eeprom_format(eeprom_version);
+        eeprom_set_version();
     }
 }
 
 // format EEPROM to initial state and values
-void eeprom_format(byte v)
+//void eeprom_format(byte v)
+void eeprom_format()
 {
     eeprom_format_act();
     eeprom_format_prg();
@@ -635,7 +646,8 @@ void eeprom_format_progs()
 // set initial values for booting log
 void eeprom_format_boot()
 {
-    eeprom_write_boots((unsigned int) 0);
+    eeprom_write_boots(0);
+    eeprom_write_boottime(0);
 }
 
 // set EEPROM structure version
@@ -744,6 +756,7 @@ void eeprom_save_delay(byte c)
 void new_boot()
 {
     eeprom_inc_boots();
+    eeprom_write_boottime(rtc.getUnixTime(rtc.getTime()));
 }
 
 //increment boots counter
@@ -755,15 +768,29 @@ void eeprom_inc_boots()
 //read boots counter
 unsigned int eeprom_read_boots()
 {
-    return eeprom_read_uint16(EEPROM_OFFSET_BOOTS);
+    return eeprom_read_word(EEPROM_OFFSET_BOOTS);
 }
 
 //write to boots counter
 void eeprom_write_boots(int v)
 {
-    eeprom_write_uint16(EEPROM_OFFSET_BOOTS,v);
+    eeprom_write_word(EEPROM_OFFSET_BOOTS,v);
 }
 
+//read boottime
+long eeprom_read_boottime()
+{
+    return eeprom_read_dword(EEPROM_OFFSET_BOOTTIME);
+}
+
+
+//write boot time
+void eeprom_write_boottime(long v)
+{
+    eeprom_write_dword(EEPROM_OFFSET_BOOTTIME,v);
+}
+
+/*
 //reading two bytes as int16 number from EEPROM, high bits are firset
 unsigned int eeprom_read_uint16(int addres)
 {
@@ -781,7 +808,7 @@ void eeprom_write_uint16(int addres, unsigned int v)
     EEPROM.write(addres,h);
     EEPROM.write(addres + 1,l);
 }
-
+*/
 
 /*****************************************************************************
 *
