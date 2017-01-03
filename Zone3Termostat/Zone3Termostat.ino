@@ -186,13 +186,13 @@ byte cur_pos_r = TIME_ROW;
 
 // watch heating issues
 #define TEMP_HIST_STEPS 10                                  // keep 10 last tepm
-#define TEMP_HIST_STEP 3                                    // time step for save temperature in minutes
+#define TEMP_HIST_STEP 1                                    // time step for save temperature in minutes
 #define TEMP_HIST_TIME TEMP_HIST_STEPS * TEMP_HIST_STEP     // whole time history keeping
 #define DELTA_WINDOW_OPEN_C 1                               // temp delta for detect open window
 #define DELTA_WINDOW_OPEN_TIME 5                            // time for detect open window in minutes
 #define HEATING_PAUSE_WINDOW 30                             // how long will be heating stopped
 #define DELTA_VALVE_CLOSE_C 1                               // temp delta for detect close valve
-#define DELTA_VALVE_CLOSE_TIME 15                           // time for detect close valve in minutes
+#define DELTA_VALVE_CLOSE_TIME 10                           // time for detect close valve in minutes
 #define HEATING_PAUSE_VALVE 30                              // how long will be heating stopped in minutes
 #define TEMP_LIMIT 1                                        // control temperature + - wanted temperature
 float prg_temp_hist[SENSORS][TEMP_HIST_STEPS];              // temperature history for detect heating pause
@@ -401,6 +401,7 @@ void sprint_temp_hist()
         Serial.print(sens_heating[s]);
         Serial.println();
     }
+
 }
 
 //save few last temperatures for sensors in interval
