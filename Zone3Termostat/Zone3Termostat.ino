@@ -9,7 +9,7 @@ v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, mo
 v1.2.1 11.12.2016 - fix program set (validation for programs)
 v1.3.0 1.1.2017 - open window detection
 v1.3.1 1.1.2017 - fixed temperature history and calc heating
-
+v1.3.2 3.1.2017 - added watchdog
 
 todo:
 ---- 28.11.2016 - cut app to more libraries
@@ -31,7 +31,7 @@ Devices:
 // application version
 #define APP_VERSION_MAIN 1
 #define APP_VERSION_RELEASE 3
-#define APP_VERSION_PATCH 1
+#define APP_VERSION_PATCH 2
 
 #define DAY_STEP 6
 #define PROGRAMS 5
@@ -128,7 +128,7 @@ long relay_oldtime = millis();
 
 //EEPROM
 #include <EEPROM.h>
-#define EEPROM_VERSION 10
+#define EEPROM_VERSION 11
 #define EEPROM_OFFSET 0                                   // ERRPROM OFFSET
 #define EEPROM_OFFSET_VERSION EEPROM_OFFSET               // version of EEPROM data structure
 #define EEPROM_OFFSET_DATA EEPROM_OFFSET + 1              // offset for data start
@@ -137,9 +137,14 @@ long relay_oldtime = millis();
 #define EEPROM_OFFSET_DELAY EEPROM_OFFSET_PRG + SENSORS   // 7-15 DELAY DATE and HOUR  3x3B = DDMM+HH
 #define EEPROM_OFFSET_PSET EEPROM_OFFSET_DELAY + 9       // 16 Termostat programs are in EEPROM 1B
 #define EEPROM_OFFSET_PROGS EEPROM_OFFSET_PSET + 1       // 17 - 107 Termostat programs - 5x6x3B = 6 steps temperature + HHMM for programs
-#define EEPROM_OFFSET_NEXT EEPROM_OFFSET_PROGS + (PROGRAMS * DAY_STEP * 3)  // 1st free byte
-
+//EEPROM 11 extension for watchdog
+#define EEPROM_OFFSET_BOOTS EEPROM_OFFSET_PROGS + (PROGRAMS * DAY_STEP * 3)  // 108-109 - boots counter 2B
+#define EEPROM_OFFSET_BOOTTIME EEPROM_OFFSET_BOOTS + 2                       // 110-113 - boot time and date 4B
+#define EEPROM_OFFSET_NEXT EEPROM_OFFSET_BOOTS + 4                           // 1st free byte
 boolean rom_change = false;
+
+//watchdog
+#include <avr/wdt.h>
 
 //Application definition
   //LCD positions
@@ -278,11 +283,15 @@ void setup()
   //lcd.createChar(8, fire2);
   lcd.begin(16, 2);
   SafeBLoff(PIN_BL);
-  delay(500);
+  delay(100);
   SafeBLon(PIN_BL);
   lcd.setCursor(0, 0);
   lcd.print("3ZoneTermostat");
   lcd.setCursor(0, 1);
+  lcd.print("by Martin Mikala");
+  delay(500);
+  lcd.clear();
+  lcd.setCursor(0, 0);
   lcd.print("ver. ");
   lcd.print(APP_VERSION_MAIN);
   lcd.print('.');
@@ -291,7 +300,8 @@ void setup()
   lcd.print(APP_VERSION_PATCH);
   lcd.print(" r");
   lcd.print(EEPROM_VERSION);
-  delay(2000);
+  lcd.setCursor(0, 1);
+  delay(1000);
   lcd.clear();
 
   //RTC
@@ -305,12 +315,16 @@ void setup()
   //eeprom_init_progs();
   eeprom_load();
 
+  //watchdog
+  wdt_enable(WDTO_4S);  // watchdog counter to 4s
+
   //init variable
   //reset_temp_hist_all();
 }
 
 void loop()
 {
+    wdt_reset();
     calc_heating();
     set_relay();
     temp_history();
@@ -555,7 +569,7 @@ void eeprom_init()
     }
     else if (eeprom_version < EEPROM_VERSION)                          // new EEPROM data structure version
     {
-        eeprom_format(eeprom_version);
+        //eeprom_format(eeprom_version);
     }
     else if (eeprom_version > EEPROM_VERSION)                          // older EEPROM data structure version
     {
@@ -570,6 +584,7 @@ void eeprom_format(byte v)
     eeprom_format_prg();
     eeprom_format_delay();
     eeprom_format_progs();
+    eeprom_format_boot();
     eeprom_set_version();
 }
 
@@ -611,6 +626,15 @@ void eeprom_format_progs()
         eeprom_reset_progs(p);
     }
     EEPROM.write(EEPROM_OFFSET_PSET, 1);
+}
+
+// set initial values for booting log
+void eeprom_format_boot()
+{
+    for(byte i = 0; i < 6;i++)
+    {
+      EEPROM.write(EEPROM_OFFSET_BOOTS + i,0);
+    }
 }
 
 // set EEPROM structure version
@@ -714,6 +738,28 @@ void eeprom_save_delay(byte c)
   EEPROM.write(EEPROM_OFFSET_DELAY + (c*3)+1,sens_delay[c][1]);
   EEPROM.write(EEPROM_OFFSET_DELAY + (c*3)+2,sens_delay[c][2]);
 }
+/*
+//increment boots
+void eeprom_inc_boots()
+{
+
+}
+
+int eeprom_read_boots()
+(
+
+)
+
+void eeprom_write_boots(int v)
+{
+
+}
+
+int eeprom_read_int16(int addres)
+{
+
+}
+*/
 
 /*****************************************************************************
 *
@@ -737,6 +783,7 @@ void set_termostat()
     long etime = millis();
     while ((goloop == true) && ((millis() - etime) < EXIT_TIME))
     {
+        wdt_reset();
         key = keypad.getKey();
         switch (key)
         {
@@ -796,6 +843,7 @@ void set_programs()
     // change temperature for programs
     while ((goloop == true) && ((millis() - etime) < EXIT_TIME*2))
     {
+        wdt_reset();
         key = keypad.getKey();
         switch (key)
         {
@@ -859,6 +907,7 @@ void set_programs()
     // change times for programs
     while ((goloop == true) && ((millis() - etime) < EXIT_TIME*2))
     {
+        wdt_reset();
         key = keypad.getKey();
         switch (key)
         {
@@ -1000,6 +1049,7 @@ void reset_program(byte p)
     long etime = millis();
     while (goloop && ((millis() - etime) < EXIT_TIME))
     {
+        wdt_reset();
         key = keypad.getKey();
         switch (key)
         {
@@ -1052,6 +1102,7 @@ byte select_program()
     long etime = millis();
     while (goloop && ((millis() - etime) < EXIT_TIME))
     {
+        wdt_reset();
         key = keypad.getKey();
         switch (key)
         {
@@ -1092,6 +1143,7 @@ void set_time()
   long etime = millis();
   while (goloop && ((millis() - etime) < EXIT_TIME))
   {
+      wdt_reset();
     //if (keypad.isKey())
     //{
       key = keypad.getKey();
@@ -1130,6 +1182,7 @@ void write_time()
   long etime = millis();
   while (goloop && ((millis() - etime) < EXIT_TIME))
   {
+      wdt_reset();
     //if (keypad.isKey())
     //{
       key = keypad.getKey();
@@ -1642,6 +1695,7 @@ void sensor_set(byte c)
   long etime = millis();
   while (goloop && ((millis() - etime) < EXIT_TIME))
   {
+      wdt_reset();
       key = keypad.getKey();
       switch (key)
       {
@@ -1677,6 +1731,7 @@ void sensor_activate(byte c)
   long etime = millis();
   while (goloop && ((millis() - etime) < EXIT_TIME))
   {
+      wdt_reset();
     //if (keypad.isKey())
     //{
       key = keypad.getKey();
