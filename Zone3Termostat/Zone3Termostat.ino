@@ -301,6 +301,8 @@ void setup()
   lcd.print(" r");
   lcd.print(EEPROM_VERSION);
   lcd.setCursor(0, 1);
+  lcd.print("boots:");
+  lcd.print(eeprom_read_boots());
   delay(1000);
   lcd.clear();
 
@@ -320,6 +322,8 @@ void setup()
 
   //init variable
   //reset_temp_hist_all();
+  //new boot, write info
+  new_boot();
 }
 
 void loop()
@@ -631,10 +635,7 @@ void eeprom_format_progs()
 // set initial values for booting log
 void eeprom_format_boot()
 {
-    for(byte i = 0; i < 6;i++)
-    {
-      EEPROM.write(EEPROM_OFFSET_BOOTS + i,0);
-    }
+    eeprom_write_boots((unsigned int) 0);
 }
 
 // set EEPROM structure version
@@ -738,28 +739,49 @@ void eeprom_save_delay(byte c)
   EEPROM.write(EEPROM_OFFSET_DELAY + (c*3)+1,sens_delay[c][1]);
   EEPROM.write(EEPROM_OFFSET_DELAY + (c*3)+2,sens_delay[c][2]);
 }
-/*
-//increment boots
+
+//new boot
+void new_boot()
+{
+    eeprom_inc_boots();
+}
+
+//increment boots counter
 void eeprom_inc_boots()
 {
-
+    eeprom_write_boots(eeprom_read_boots() + 1);
 }
 
-int eeprom_read_boots()
-(
+//read boots counter
+unsigned int eeprom_read_boots()
+{
+    return eeprom_read_uint16(EEPROM_OFFSET_BOOTS);
+}
 
-)
-
+//write to boots counter
 void eeprom_write_boots(int v)
 {
-
+    eeprom_write_uint16(EEPROM_OFFSET_BOOTS,v);
 }
 
-int eeprom_read_int16(int addres)
+//reading two bytes as int16 number from EEPROM, high bits are firset
+unsigned int eeprom_read_uint16(int addres)
 {
-
+    byte h,l;
+    h = EEPROM.read(addres);
+    l = EEPROM.read(addres+1);
+    return ((unsigned int) h << 8) + (unsigned int) l;
 }
-*/
+
+void eeprom_write_uint16(int addres, unsigned int v)
+{
+    byte h,l;
+    h = (v >> 8);
+    l = v & 0xFF;
+    EEPROM.write(addres,h);
+    EEPROM.write(addres + 1,l);
+}
+
 
 /*****************************************************************************
 *
@@ -907,7 +929,7 @@ void set_programs()
     // change times for programs
     while ((goloop == true) && ((millis() - etime) < EXIT_TIME*2))
     {
-        wdt_reset();
+        wdt_reset();{}
         key = keypad.getKey();
         switch (key)
         {
