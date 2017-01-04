@@ -10,9 +10,9 @@ v1.2.1 11.12.2016 - fix program set (validation for programs)
 v1.3.0 1.1.2017 - open window detection
 v1.3.1 1.1.2017 - fixed temperature history and calc heating
 v1.3.2 3.1.2017 - added watchdog
+v1.4.0 4.1.2017 - turn on/off extended functions (watchgod,OpenWindow)
 
 todo:
-1.4--   4.1.2017 - menu for on/off functions
 1.5--   1.1.2017 - extra button for activate sensor
 1.--- 18.12.2016 - debuging to serial console
 1.---   1.1.2017 - merge{clean} variables c & s as c  - for channel or sensor and use s for program step
@@ -32,8 +32,8 @@ Devices:
 
 // application version
 #define APP_VERSION_MAIN 1
-#define APP_VERSION_RELEASE 3
-#define APP_VERSION_PATCH 2
+#define APP_VERSION_RELEASE 4
+#define APP_VERSION_PATCH 0
 
 #define DAY_STEP 6
 #define PROGRAMS 5
@@ -873,6 +873,15 @@ void set_termostat()
     }
     lcd.clear();
 }
+
+String menu_settings[][4]={
+    {"PROGRAMY","menu_programs","exe",""},
+    {"CAS","set_time","exe",""},
+    {"OKNO","window_detection_active","bolean",""},
+    {"CASOVAC","watchdog_active","bolean",""}
+};
+
+//void manu_vertical(String menu)
 
 //set or change predefined programs , called from  set_termostat
 void set_programs()
