@@ -12,12 +12,14 @@ v1.3.1 1.1.2017 - fixed temperature history and calc heating
 v1.3.2 3.1.2017 - added watchdog
 
 todo:
----- 28.11.2016 - cut app to more libraries
----- 28.11.2016 - eeprom migration functions for new EEPROM version
----- 18.12.2016 - debuging to serial console
-----   1.1.2017 - merge{clean} variables c & s as c  - for channel or sensor and use s for program step
-----   1.1.2017 - extra button for activate sensor
-----   1.1.2017 - add remote valve control
+1.4--   4.1.2017 - menu for on/off functions
+1.5--   1.1.2017 - extra button for activate sensor
+1.--- 18.12.2016 - debuging to serial console
+1.---   1.1.2017 - merge{clean} variables c & s as c  - for channel or sensor and use s for program step
+1.---   4.1.2017 - log to SD card
+2.---   1.1.2017 - add remote valve control
+2.---   4.1.2017 - add ESP8266 Wifi Connection - control from WEB
+----- 28.11.2016 - cut app to more libraries
 
 Devices:
 1x Arduino UNO
