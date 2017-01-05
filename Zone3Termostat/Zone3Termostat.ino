@@ -881,7 +881,7 @@ String menu_settings[][4]={
     {"CASOVAC","watchdog_active","bolean",""}
 };
 
-//void manu_vertical(String menu)
+//void menu_vertical(String menu)
 
 //set or change predefined programs , called from  set_termostat
 void set_programs()
