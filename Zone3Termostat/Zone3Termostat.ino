@@ -17,6 +17,7 @@ todo:
 1.--- 18.12.2016 - debuging to serial console
 1.---   1.1.2017 - merge{clean} variables c & s as c  - for channel or sensor and use s for program step
 1.---   4.1.2017 - log to SD card
+1.---   9.1.2017 - invalidate old temperatures (60 minutes)
 2.---   1.1.2017 - add remote valve control
 2.---   4.1.2017 - add ESP8266 Wifi Connection - control from WEB
 ----- 28.11.2016 - cut app to more libraries
@@ -57,6 +58,8 @@ Devices:
 #define PIN_BL 10    // LCD backlight control (see bug http://forum.arduino.cc/index.php?topic=96747.0)
 #define SafeBLon(pin) pinMode(pin, INPUT)
 #define SafeBLoff(pin) pinMode(pin, OUTPUT)
+#define LCD_ROWS 2      // row of LCD
+#define LCD_COLUMNS 16  // columns of LCD
 
 // invert one
 byte invert1[8] = {
@@ -230,35 +233,35 @@ long time_min_count = millis();                           // variable fo count h
 
 const byte init_temp[PROGRAMS][DAY_STEP] =                // temperature for programs
 {
-  {23,21,23,20,0,0},
-  {22,20,21,18,0,0},
-  {22,0,0,0,0,0},
-  {22,21,22,21,20,18},
-  {18,0,0,0,0,0}
+  {23,21,22,20,0,0},
+  {22,20,0,0,0,0},
+  {21,0,0,0,0,0},
+  {23,20,0,0,0,0},
+  {22,19,0,0,0,0}
 };
 const unsigned int init_time[PROGRAMS][DAY_STEP] =        // time points for programs
 {
-  {600,1000,1500,2300,0,0},                              // number format HHMM, 0 = off
-  {600,1000,1500,2300,0,0},
+  {600,1000,1500,2200,0,0},                              // number format HHMM, 0 = off
+  {600,2300,0,0,0,0},
   {100,0,0,0,0,0},
-  {600,900,1800,2000,2200,2300},
-  {100,0,0,0,0,0}
+  {600,2300,0,0,0,0},
+  {600,2200,0,0,0,0}
 };
 byte prg_temp[PROGRAMS][DAY_STEP] =                           // temperature for programs
 {
-  {23,21,23,20,0,0},
-  {22,20,21,18,0,0},
-  {22,0,0,0,0,0},
-  {22,21,22,21,20,18},
-  {18,0,0,0,0,0}
+    {23,21,22,20,0,0},
+    {22,20,0,0,0,0},
+    {21,0,0,0,0,0},
+    {23,20,0,0,0,0},
+    {22,19,0,0,0,0}
 };
 unsigned int prg_time[PROGRAMS][DAY_STEP] =        // time points for programs
 {
-  {600,1000,1500,2300,0,0},                              // number format HHMM, 0 = off
-  {600,1000,1500,2300,0,0},
-  {100,0,0,0,0,0},
-  {600,900,1800,2000,2200,2300},
-  {100,0,0,0,0,0}
+    {600,1000,1500,2200,0,0},                              // number format HHMM, 0 = off
+    {600,2300,0,0,0,0},
+    {100,0,0,0,0,0},
+    {600,2300,0,0,0,0},
+    {600,2200,0,0,0,0}
 };
 
 unsigned long deltime = 0;
@@ -874,12 +877,76 @@ void set_termostat()
     lcd.clear();
 }
 
+/*
 String menu_settings[][4]={
     {"PROGRAMY","menu_programs","exe",""},
     {"CAS","set_time","exe",""},
     {"OKNO","window_detection_active","bolean",""},
     {"CASOVAC","watchdog_active","bolean",""}
 };
+
+void menuv_print(String menu_array[][], byte position)
+{
+
+}
+
+// setting of termostart menu , called by SET key
+void set_termostat2()
+{
+    boolean goloop = true;
+    byte menu_position = 0;
+
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("PROGRAMS");                                  // PROGRAMS set menu
+    lcd.setCursor(0,1);
+    lcd.print("TIME");                                      // TIME set menu
+    lcd.setCursor(0,0);
+    lcd.blink();
+    // loop for choise from menu
+    long etime = millis();
+    while ((goloop == true) && ((millis() - etime) < EXIT_TIME))
+    {
+        wdt_reset();
+        key = keypad.getKey();
+        switch (key)
+        {
+            case KEYLEFT:
+            case KEYRIGHT:
+                menu_position = 255;
+                goloop = false;
+                break;
+            case KEYUP:
+                menu_position = 0;
+                lcd.setCursor(0,menu_position);
+                lcd.blink();
+                break;
+            case KEYDOWN:
+                menu_position = 1;
+                lcd.setCursor(0,menu_position);
+                lcd.blink();
+                break;
+          case KEYSET:
+            goloop = false;
+            break;
+        }
+        if(key > 0) etime = millis();
+      //}
+    }
+    switch (menu_position)
+    {
+        case 0:
+            set_programs();
+            break;
+        case 1:
+            set_time();
+            break;
+        case 255:
+            break;
+    }
+    lcd.clear();
+}
+*/
 
 //void menu_vertical(String menu)
 
