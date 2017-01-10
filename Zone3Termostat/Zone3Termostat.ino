@@ -25,8 +25,7 @@ Devices:
 1x Arduino UNO
 3x Sencor T25 433MHz sensor http://www.sencor.eu/wireless-sensor/sws-t25
 1x RXB6 - 433MHz receiver
-1x LCD keypad shield V0.1 LCD1602A+buttons
-1x RTC DS3231
+1x LCD keypad shield V0.1 LCD1602A+buttons1x RTC DS3231
 1x relay module HL-51 250V/10A
 */
 
