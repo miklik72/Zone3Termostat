@@ -133,7 +133,7 @@ long relay_oldtime = millis();
 
 //EEPROM
 #include <EEPROM.h>
-#define EEPROM_VERSION 12
+#define EEPROM_VERSION 13
 #define EEPROM_OFFSET 0                                   // ERRPROM OFFSET
 #define EEPROM_OFFSET_VERSION EEPROM_OFFSET               // version of EEPROM data structure
 #define EEPROM_OFFSET_DATA EEPROM_OFFSET + 1              // offset for data start
@@ -145,7 +145,11 @@ long relay_oldtime = millis();
 //EEPROM 11 extension for watchdog
 #define EEPROM_OFFSET_BOOTS EEPROM_OFFSET_PROGS + (PROGRAMS * DAY_STEP * 3)  // 108-109 - boots counter 2B
 #define EEPROM_OFFSET_BOOTTIME EEPROM_OFFSET_BOOTS + 2                       // 110-113 - boot time and date 4B
-#define EEPROM_OFFSET_NEXT EEPROM_OFFSET_BOOTS + 4                           // 1st free byte
+//EEPROM 12 extension for window open check
+#define EEPROM_OFFSET_ACTWTDOG EEPROM_OFFSET_BOOTTIME + 4                   // 114 - active watchdog 1B
+//EEPROM 13 extension for window open check
+#define EEPROM_OFFSET_ACTWINDOW EEPROM_OFFSET_ACTWTDOG + 1                   // 114 - active window oen detection 1B
+#define EEPROM_OFFSET_NEXT EEPROM_OFFSET_ACTWINDOW + 1                       // 1st free byte
 boolean rom_change = false;
 
 //watchdog
@@ -205,6 +209,7 @@ byte cur_pos_r = TIME_ROW;
 #define DELTA_VALVE_CLOSE_TIME 10                           // time for detect close valve in minutes
 #define HEATING_PAUSE_VALVE 30                              // how long will be heating stopped in minutes
 #define TEMP_LIMIT 1                                        // control temperature + - wanted temperature
+bool active_window_pause = false;                            // activate window pause detection
 float prg_temp_hist[SENSORS][TEMP_HIST_STEPS];              // temperature history for detect heating pause
 long temp_hist_last_time = millis();                         // timestamp for calculate next temperature record
 byte open_window[SENSORS]={0,0,0};                          // detect open window
@@ -230,6 +235,7 @@ long sens_delay[SENSORS][3]={{0,0,0},{0,0,0},{0,0,0}};    // activate sensor del
 boolean heating = false;                                  // control relay for turn on/off heating
 byte sens_prg[SENSORS]={2,3,1};                           // number of program for sensor
 long time_min_count = millis();                           // variable fo count heating pause
+bool active_watchdog = true;                              // activate watchdog
 
 const byte init_temp[PROGRAMS][DAY_STEP] =                // temperature for programs
 {
@@ -355,7 +361,8 @@ void loop()
           sensor_set(2);                   // convert char of number to byte
           break;
         case KEYSET:
-          set_termostat();
+          //set_termostat();
+          set_termostat2();
           break;
     }
       if(lcd_refresh()) print_main_screen();
@@ -375,7 +382,7 @@ void temp_history()
     if(delta_minutes(temp_hist_last_time) >= TEMP_HIST_STEP)
     {
         save_temp_history();
-        checkHeatingPause();
+        if (active_window_pause) checkHeatingPause();
         sprint_temp_hist();
 
         temp_hist_last_time = millis();
@@ -735,6 +742,14 @@ void eeprom_load()
     {
       eeprom_load_progs(s);
     }
+
+    // EEPROM 12,13
+    byte a = 0;
+    a = eeprom_read_actwindow();
+    if(a == 0 || a == 1) active_window_pause = a;
+
+    a = eeprom_read_actwtdog();
+    if(a == 0 || a == 1) active_watchdog = a;
 }
 
 // save sensor activation to EEPROM
@@ -795,25 +810,31 @@ void eeprom_write_boottime(long v)
     eeprom_write_dword(EEPROM_OFFSET_BOOTTIME,v);
 }
 
-/*
-//reading two bytes as int16 number from EEPROM, high bits are firset
-unsigned int eeprom_read_uint16(int addres)
+//read window open activation
+boolean eeprom_read_actwindow()
 {
-    byte h,l;
-    h = EEPROM.read(addres);
-    l = EEPROM.read(addres+1);
-    return ((unsigned int) h << 8) + (unsigned int) l;
+    return EEPROM.read(EEPROM_OFFSET_ACTWINDOW);
 }
 
-void eeprom_write_uint16(int addres, unsigned int v)
+//write window open activation
+void eeprom_write_actwindow(bool v)
 {
-    byte h,l;
-    h = (v >> 8);
-    l = v & 0xFF;
-    EEPROM.write(addres,h);
-    EEPROM.write(addres + 1,l);
+    EEPROM.write(EEPROM_OFFSET_ACTWINDOW,v);
 }
-*/
+
+//read window open activation
+boolean eeprom_read_actwtdog()
+{
+    return EEPROM.read(EEPROM_OFFSET_ACTWTDOG);
+}
+
+//write window open activation
+void eeprom_write_actwtdog(bool v)
+{
+    EEPROM.write(EEPROM_OFFSET_ACTWTDOG,v);
+}
+
+
 
 /*****************************************************************************
 *
@@ -877,31 +898,31 @@ void set_termostat()
     lcd.clear();
 }
 
-/*
-String menu_settings[][4]={
-    {"PROGRAMY","menu_programs","exe",""},
-    {"CAS","set_time","exe",""},
-    {"OKNO","window_detection_active","bolean",""},
-    {"CASOVAC","watchdog_active","bolean",""}
-};
 
-void menuv_print(String menu_array[][], byte position)
+String menu_settings[]={"PROGRAMY","CAS","OKNO","CASOVAC",""};
+
+void stmenu_print(String* menu_array, byte position)
 {
-
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print(menu_array[position]);
+    //lcd.print(position);
+    lcd.setCursor(0,1);
+    lcd.print(menu_array[position + 1]);
 }
 
-// setting of termostart menu , called by SET key
+
+
+//setting of termostart menu , called by SET key
 void set_termostat2()
 {
     boolean goloop = true;
     byte menu_position = 0;
-
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("PROGRAMS");                                  // PROGRAMS set menu
-    lcd.setCursor(0,1);
-    lcd.print("TIME");                                      // TIME set menu
-    lcd.setCursor(0,0);
+    byte menu_lenght = 4;
+    byte menu_row = 0;
+    bool menu_refresh = false;
+    stmenu_print(menu_settings,menu_position);
+    lcd.setCursor(0,menu_row);
     lcd.blink();
     // loop for choise from menu
     long etime = millis();
@@ -917,21 +938,31 @@ void set_termostat2()
                 goloop = false;
                 break;
             case KEYUP:
-                menu_position = 0;
-                lcd.setCursor(0,menu_position);
-                lcd.blink();
+                menu_position--;
+                menu_refresh = true;
+                //lcd.setCursor(0,menu_position);
+                //lcd.blink();
                 break;
             case KEYDOWN:
-                menu_position = 1;
-                lcd.setCursor(0,menu_position);
-                lcd.blink();
+                menu_position++;
+                menu_refresh = true;
+                //lcd.setCursor(0,menu_position);
+                //lcd.blink();
                 break;
           case KEYSET:
             goloop = false;
             break;
         }
         if(key > 0) etime = millis();
-      //}
+        if(menu_refresh)
+        {
+            if(menu_position > menu_lenght) menu_position = menu_lenght - 1;
+            if(menu_position == menu_lenght) menu_position = 0;
+            stmenu_print(menu_settings,menu_position);
+            lcd.setCursor(0,menu_row);
+            lcd.blink();
+            menu_refresh = false;
+        }
     }
     switch (menu_position)
     {
@@ -941,14 +972,81 @@ void set_termostat2()
         case 1:
             set_time();
             break;
+        case 2:
+            switch_window_pause();
+            break;
+        case 3:
+            switch_watchdog();
+            break;
         case 255:
             break;
     }
     lcd.clear();
 }
-*/
 
-//void menu_vertical(String menu)
+void switch_window_pause()
+{
+    boolean goloop = true;
+    lcd.clear();
+    lcd.print("OTEVRENI OKNA ");
+    lcd.setCursor(0,1);
+    lcd.print(active_window_pause ? "ANO" : "NE");
+    long etime = millis();
+    // change temperature for programs
+    while ((goloop == true) && ((millis() - etime) < EXIT_TIME*2))
+    {
+        wdt_reset();
+        key = keypad.getKey();
+        switch (key)
+        {
+            case KEYLEFT:
+            case KEYRIGHT:
+            case KEYUP:                                   // U D key for chnage temperature 0 and MIN_TEMP to MAX_TEMP
+            case KEYDOWN:
+                active_window_pause = active_window_pause ? false : true;
+                lcd.clear();
+                lcd.print("OTEVRENI OKNA ");
+                lcd.setCursor(0,1);
+                lcd.print(active_window_pause ? "ANO" : "NE");
+                break;
+          case KEYSET:
+            goloop = false;
+            eeprom_write_actwindow(active_window_pause);
+            break;
+        }
+    }
+}
+
+void switch_watchdog()
+{
+    boolean goloop = true;
+    lcd.clear();
+    lcd.print("WATCHDOG ");
+    lcd.print(active_watchdog ? "ANO" : "NE");
+    long etime = millis();
+    // change temperature for programs
+    while ((goloop == true) && ((millis() - etime) < EXIT_TIME*2))
+    {
+        wdt_reset();
+        key = keypad.getKey();
+        switch (key)
+        {
+            case KEYLEFT:
+            case KEYRIGHT:
+            case KEYUP:                                   // U D key for chnage temperature 0 and MIN_TEMP to MAX_TEMP
+            case KEYDOWN:
+                active_watchdog = active_watchdog ? false : true;
+                lcd.clear();
+                lcd.print("WATCHDOG ");
+                lcd.print(active_watchdog ? "ANO" : "NE");
+                break;
+          case KEYSET:
+            goloop = false;
+            eeprom_write_actwtdog(active_watchdog);
+            break;
+        }
+    }
+}
 
 //set or change predefined programs , called from  set_termostat
 void set_programs()
