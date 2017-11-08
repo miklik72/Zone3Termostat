@@ -11,6 +11,7 @@ v1.3.0 1.1.2017 - open window detection
 v1.3.1 1.1.2017 - fixed temperature history and calc heating
 v1.3.2 3.1.2017 - added watchdog
 v1.4.0 4.1.2017 - turn on/off extended functions (watchgod,OpenWindow)
+v1.4.1 7.11.2017 - new DS3231 library
 
 todo:
 1.5--   1.1.2017 - extra button for activate sensor
@@ -25,14 +26,15 @@ Devices:
 1x Arduino UNO
 3x Sencor T25 433MHz sensor http://www.sencor.eu/wireless-sensor/sws-t25
 1x RXB6 - 433MHz receiver
-1x LCD keypad shield V0.1 LCD1602A+buttons1x RTC DS3231
+1x LCD keypad shield V0.1 LCD1602A+buttons
+1x RTC DS3231
 1x relay module HL-51 250V/10A
 */
 
 // application version
 #define APP_VERSION_MAIN 1
 #define APP_VERSION_RELEASE 4
-#define APP_VERSION_PATCH 0
+#define APP_VERSION_PATCH 1
 
 #define DAY_STEP 6
 #define PROGRAMS 5
@@ -113,8 +115,17 @@ byte lcdcol = 0;
 
 //RTC I2C
 #include <DS3231.h>
-DS3231 rtc(SDA,SCL);
-Time t;
+#include <Wire.h>
+//DS3231 rtc(SDA,SCL);
+DS3231 Clock;
+RTClib rtc;
+//Time t;
+DateTime t;
+unsigned int tmpYear;
+byte tmpMonth;
+byte tmpDate;
+byte tmpHour;
+byte tmpMinute;
 
 //keypad
 #include <DFR_KeyMM.h>
@@ -276,7 +287,8 @@ void setup()
   SensorT25::enable(IRQ_PIN);
 
   //RTC
-  rtc.begin();
+  //rtc.begin(); new lib
+  Wire.begin();
 
   //LCD
   // set up the LCD's number of columns and rows
@@ -390,7 +402,14 @@ void temp_history()
 void sprint_temp_hist()
 {
     Serial.print("TEMP HIST:");
-    Serial.println(rtc.getTimeStr());
+    //Serial.println(rtc.getTimeStr()); new lib
+    t = rtc.now();
+    Serial.print(t.hour(), DEC);
+    Serial.print(':');
+    Serial.print(t.minute(), DEC);
+    Serial.print(':');
+    Serial.print(t.second(), DEC);
+    Serial.println();
     for(byte s = 0;s < SENSORS;s++)
     {
         Serial.print(s);
@@ -757,7 +776,9 @@ void eeprom_save_delay(byte c)
 void new_boot()
 {
     eeprom_inc_boots();
-    eeprom_write_boottime(rtc.getUnixTime(rtc.getTime()));
+    //eeprom_write_boottime(rtc.getUnixTime(rtc.getTime())); new rtc lib
+    t = rtc.now();
+    eeprom_write_boottime(t.unixtime());
 }
 
 //increment boots counter
@@ -1188,7 +1209,15 @@ byte select_program()
 // set time in RTC
 void set_time()
 {
-  t = rtc.getTime();
+  //t = rtc.getTime(); new lib
+  t = rtc.now();
+  // time variables for change time
+  tmpYear = t.year();
+  tmpMonth = t.month();
+  tmpDate = t.day();
+  tmpHour = t.hour();
+  tmpMinute = t.minute();
+
   boolean goloop = true;
   cur_pos_c = TIME_HCOL;
   cur_pos_r = TIME_ROW;
@@ -1259,8 +1288,14 @@ void write_time()
           goloop = false;
           lcd.clear();
           lcd.print("Set time");
-          rtc.setTime(t.hour,t.min,0);
-          rtc.setDate(t.date,t.mon,t.year);
+          //rtc.setTime(t.hour,t.min,0); new lib
+          //rtc.setDate(t.date,t.mon,t.year); new lib
+          Clock.setHour(tmpHour);
+          Clock.setMinute(tmpMinute);
+          Clock.setSecond(0);
+          Clock.setDate(tmpDate);
+          Clock.setMonth(tmpMonth);
+          Clock.setYear(tmpYear - 2000);
           //delay(2000);
           break;
       }
@@ -1429,12 +1464,12 @@ void set_value(byte k)
         switch (k)
         {
           case KEYUP:
-            t.hour+=10;
-            if(t.hour > 23) t.hour = 0;
+            tmpHour+=10; //newlib
+            if(tmpHour > 23) tmpHour = 0;
             break;
           case KEYDOWN:
-            t.hour-=10;
-            if(t.hour > 23) t.hour = 23;
+            tmpHour-=10;
+            if(tmpHour > 23) tmpHour = 23;
             break;
         }
         break;
@@ -1442,12 +1477,12 @@ void set_value(byte k)
         switch (k)
         {
           case KEYUP:
-            t.hour++;
-            if(t.hour > 23) t.hour = 0;
+            tmpHour++;
+            if(tmpHour > 23) tmpHour = 0;
             break;
           case KEYDOWN:
-            t.hour--;
-            if(t.hour > 23) t.hour = 23;
+            tmpHour--;
+            if(tmpHour > 23) tmpHour = 23;
             break;
         }
         break;
@@ -1455,12 +1490,12 @@ void set_value(byte k)
         switch (k)
         {
           case KEYUP:
-            t.min+=10;
-            if(t.min > 59) t.min = 0;
+            tmpMinute+=10;
+            if(tmpMinute > 59) tmpMinute = 0;
             break;
           case KEYDOWN:
-            t.min-=10;
-            if(t.min > 59) t.min = 59;
+            tmpMinute-=10;
+            if(tmpMinute > 59) tmpMinute = 59;
             break;
         }
         break;
@@ -1468,12 +1503,12 @@ void set_value(byte k)
         switch (k)
         {
           case KEYUP:
-            t.min++;
-            if(t.min > 59) t.min = 0;
+            tmpMinute++;
+            if(tmpMinute > 59) tmpMinute = 0;
             break;
           case KEYDOWN:
-            t.min--;
-            if(t.min > 59) t.min = 59;
+            tmpMinute--;
+            if(tmpMinute > 59) tmpMinute = 59;
             break;
         }
         break;
@@ -1487,12 +1522,12 @@ void set_value(byte k)
         switch (k)
         {
           case KEYUP:
-            t.date+=10;
-            if(t.date > 31) t.date = 1;
+            tmpDate+=10;
+            if(tmpDate > 31) tmpDate = 1;
             break;
           case KEYDOWN:
-            t.date-=10;
-            if(t.date > 31) t.date = 31;
+            tmpDate-=10;
+            if(tmpDate > 31) tmpDate = 31;
             break;
         }
         break;
@@ -1500,12 +1535,12 @@ void set_value(byte k)
         switch (k)
         {
           case KEYUP:
-            t.date++;
-            if(t.date > 31) t.date = 1;
+            tmpDate++;
+            if(tmpDate > 31) tmpDate = 1;
             break;
           case KEYDOWN:
-            t.date--;
-            if(t.date > 31) t.date = 31;
+            tmpDate--;
+            if(tmpDate > 31) tmpDate = 31;
             break;
         }
         break;
@@ -1528,12 +1563,12 @@ void set_value(byte k)
         switch (k)
         {
           case KEYUP:
-            t.mon++;
-            if(t.mon > 12) t.mon = 1;
+            tmpMonth++;
+            if(tmpMonth > 12) tmpMonth = 1;
             break;
           case KEYDOWN:
-            t.mon--;
-            if(t.mon > 12 || t.mon < 1) t.mon = 12;
+            tmpMonth--;
+            if(tmpMonth > 12 || tmpMonth < 1) tmpMonth = 12;
             break;
         }
         break;
@@ -1582,12 +1617,12 @@ void set_value(byte k)
         switch (k)
         {
           case KEYUP:
-            t.year++;
-            if(t.year > 3000) t.year = 2000;
+            tmpYear++;
+            if(tmpYear > 3000) tmpYear = 2000;
             break;
           case KEYDOWN:
-            t.year--;
-            if(t.year > 3000) t.year = 2999;
+            tmpYear--;
+            if(tmpYear > 3000) tmpYear = 2999;
             break;
         }
         break;
@@ -1606,12 +1641,12 @@ void print_set_time(byte c, byte r)
   lcd.setCursor(c,r);
   lcd.print("Cas:");
   lcd.setCursor(c+TIME_HCOL,r);
-  if(t.hour < 10) lcd.print('0');
-  lcd.print(t.hour);
+  if(tmpHour < 10) lcd.print('0');
+  lcd.print(tmpHour);
   lcd.print(':');
   lcd.setCursor(c+TIME_MCOL,r);
-  if(t.min < 10) lcd.print('0');
-  lcd.print(t.min);
+  if(tmpMinute < 10) lcd.print('0');
+  lcd.print(tmpMinute);
   lcd.print(':');
   lcd.setCursor(c+TIME_SCOL,r);
   lcd.print("00");
@@ -1623,16 +1658,16 @@ void print_set_date(byte c, byte r)
   lcd.setCursor(c,r);
   lcd.print("Datum:");
   lcd.setCursor(c+DATE_DCOL,r);
-  if(t.date < 10) lcd.print('0');
-  lcd.print(t.date);
+  if(tmpDate < 10) lcd.print('0');
+  lcd.print(tmpDate);
   lcd.print('/');
   lcd.setCursor(c+DATE_MCOL,r);
-  if(t.mon < 10) lcd.print('0');
-  lcd.print(t.mon);
+  if(tmpMonth < 10) lcd.print('0');
+  lcd.print(tmpMonth);
   lcd.print('/');
   lcd.setCursor(c+DATE_YCOL,r);
-  if(t.year < 2000) t.year = 2000;
-  lcd.print(t.year);
+  if(tmpYear < 2000) tmpYear = 2000;
+  lcd.print(tmpYear);
 }
 
 // screen with program values
@@ -1696,9 +1731,11 @@ void set_relay()
 // get if is delay for sensor start
 boolean isSensorDelay(byte c)
 {
-  t = rtc.getTime();
+  //t = rtc.getTime(); new lib
+  t = rtc.now();
   long d = (sens_delay[c][1]*10000)+(sens_delay[c][0]*100)+sens_delay[c][2];
-  long z = (t.mon*10000L)+(t.date*100L)+t.hour;
+  //long z = (t.mon*10000L)+(t.date*100L)+t.hour;
+  long z = (t.month()*10000L)+(t.day()*100L)+t.hour();
   return (d > z) ? true :false;
 }
 
@@ -1850,11 +1887,14 @@ void sensor_activate(byte c)
 // set delay date
 void set_date_delay(byte c, byte k)
 {
-  t = rtc.getTime();
+  //t = rtc.getTime(); new lib
+  t = rtc.now();
   if((sens_delay[c][0] < 1 || sens_delay[c][0] > 31) || (sens_delay[c][1] < 1 || sens_delay[c][1] > 12))
   {
-     sens_delay[c][0] = t.date;
-     sens_delay[c][1] = t.mon;
+     //sens_delay[c][0] = t.date; new lib
+     //sens_delay[c][1] = t.mon; new lib
+     sens_delay[c][0] = t.day();
+     sens_delay[c][1] = t.month();
   }
   /*
   if(((sens_delay[c][1]*100) + sens_delay[c][0]) < ((t.mon * 100) + t.date))
@@ -1890,8 +1930,10 @@ void set_date_delay(byte c, byte k)
 // set delay time
 void set_time_delay(byte c)
 {
-  t = rtc.getTime();
-  if(sens_delay[c][2] > 23) sens_delay[c][2] = t.hour;
+  //t = rtc.getTime(); new lib
+  t = rtc.now();
+  //if(sens_delay[c][2] > 23) sens_delay[c][2] = t.hour;
+  if(sens_delay[c][2] > 23) sens_delay[c][2] = t.hour();
   sens_delay[c][2]++;
   if(sens_delay[c][2] > 23) sens_delay[c][2] = 1;
 }
@@ -1899,8 +1941,10 @@ void set_time_delay(byte c)
 //get time in format HHMM as integer
 int getTimeHHMM()
 {
-  t = rtc.getTime();
-  return t.hour*100+t.min;
+  //t = rtc.getTime(); new lib
+  t = rtc.now();
+  //return t.hour*100+t.min;
+  return t.hour()*100+t.minute();
 }
 
 // print current program step for sensor
@@ -1967,10 +2011,10 @@ int getProgTempCurrent(byte c)
 }
 
 // convert time as int number to HH:MM
-String prgInt2Time(int t)
+String prgInt2Time(int time)
 {
-  String h = String(t/100);
-  String m = String(t%100);
+  String h = String(time/100);
+  String m = String(time%100);
   //if(h.length() < 2) h = ' '+h;
   if(m.length() < 2) m = '0'+m;
   return h+':'+m;
@@ -2113,5 +2157,14 @@ void print_temperature(byte c, byte col, byte row)
 void print_time(byte col, byte row)
 {
   lcd.setCursor(col, row);
-  lcd.print(rtc.getTimeStr());
+  //lcd.print(rtc.getTimeStr());
+  t = rtc.now();
+  if(t.hour() < 10) lcd.print(' ');
+  lcd.print(t.hour(), DEC);
+  lcd.print(':');
+  if(t.minute() < 10) lcd.print('0');
+  lcd.print(t.minute(), DEC);
+  lcd.print(':');
+  if(t.second() < 10) lcd.print('0');
+  lcd.print(t.second(), DEC);
 }
