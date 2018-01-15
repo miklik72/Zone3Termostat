@@ -4,7 +4,7 @@
 /* 3 zone wireless termostat used 433Mhz temperature sensors T25
 Martin Mikala (2016) dev@miklik.cz
 
-v2.0.0 14.1.2018 - new version with connection to net, removing configuration menu 
+v2.0.0 14.1.2018 - new version with connection to net, removing configuration menu
 --------------------------------------------------------------------------------------------
 v1.1.0 9.11.2016 - extension for set programs
 v1.2.0 28.11.2016 - reset to initial state and EEPROM data structure version, more comments
@@ -122,10 +122,8 @@ byte lcdcol = 0;
 //RTC I2C
 #include <DS3231.h>
 #include <Wire.h>
-//DS3231 rtc(SDA,SCL);
 DS3231 Clock;
 RTClib rtc;
-//Time t;
 DateTime t;
 unsigned int tmpYear;
 byte tmpMonth;
@@ -135,7 +133,6 @@ byte tmpMinute;
 
 //keypad
 #include <DFR_KeyMM.h>
-//DFR_KeyMM keypad(A0);               // A0 is wired in LCD keypad shield
 DFR_KeyMM keypad;
 int key;
 
@@ -190,8 +187,6 @@ boolean rom_change = false;
 #define STATE_SENS_C 11
 #define PRG_SENS_C 15
 #define EXIT_TIME 10000           //time for automatic exit to main screen in ms
-//#define MAX_TEMP 30               // Max temperature set
-//#define MIN_TEMP 4                // Min temperature
     // Time set scree
 #define TIME_ROW 0
 #define TIME_HCOL 4
@@ -308,8 +303,6 @@ void setup()
   lcd.createChar(1, invert2);
   lcd.createChar(2, invert3);
   lcd.createChar(7, fire1);
-  //lcd.createChar(8, invert1);
-  //lcd.createChar(8, fire2);
   lcd.begin(16, 2);
   SafeBLoff(PIN_BL);
   delay(100);
@@ -343,15 +336,12 @@ void setup()
 
   //EEPROM
   eeprom_init();
-  //eeprom_init_progs();
   eeprom_load();
 
   //watchdog
   wdt_enable(WDTO_4S);  // watchdog counter to 4s
 
   //init variable
-  //reset_temp_hist_all();
-  //new boot, write info
   new_boot();
 }
 
@@ -360,7 +350,6 @@ void loop()
     wdt_reset();
     calc_heating();
     set_relay();
-    //temp_history();
 
     key = keypad.getKey();
     switch (key)
@@ -376,7 +365,6 @@ void loop()
           break;
         case KEYSET:
           //set_termostat();
-          //set_termostat2(); //v2 delete
           break;
     }
       if(lcd_refresh()) print_main_screen();
@@ -389,196 +377,33 @@ void loop()
 *
 ******************************************************************************/
 
-// execute every TEMP_HIST_STEP
-// void temp_history()
+//check is temperature go down for room where is heating
+// boolean isWindowOpen(byte s)
 // {
-//     // execute with history step time
-//     if(delta_minutes(temp_hist_last_time) >= TEMP_HIST_STEP)
-//     {
-//         //save_temp_history();
-//         //if (active_window_pause) checkHeatingPause();
-//         //sprint_temp_hist();
-//
-//         temp_hist_last_time = millis();
-//     }
-//
-//     //execute every minutes
-//     if(delta_minutes(time_min_count) >= 1)
-//     {
-//         countdownHeatingPause();
-//
-//         time_min_count = millis();
-//     }
-//
-// }
-
-// void sprint_temp_hist()
-// {
-//     Serial.print("TEMP HIST:");
-//     //Serial.println(rtc.getTimeStr()); new lib
-//     t = rtc.now();
-//     Serial.print(t.hour(), DEC);
-//     Serial.print(':');
-//     Serial.print(t.minute(), DEC);
-//     Serial.print(':');
-//     Serial.print(t.second(), DEC);
-//     Serial.println();
-//     for(byte s = 0;s < SENSORS;s++)
-//     {
-//         Serial.print(s);
-//         Serial.print('-');
-//         for(byte i = 0;i < TEMP_HIST_STEPS;i++)
+//         // true if delta temp is larger then treshold and older temp is not 0
+//         if((prg_temp_hist[s][temp_back_step_window] != 0) && (prg_temp_hist[s][temp_back_step_window] - prg_temp_hist[s][0]) > DELTA_WINDOW_OPEN_C)
 //         {
-//             Serial.print(i);
-//             Serial.print('_');
-//             Serial.print(prg_temp_hist[s][i]);
-//             Serial.print(',');
+//             return true;
 //         }
-//         Serial.print(" T ");
-//         Serial.print(SensorT25::getTemperature(s));
-//         Serial.print(" - ");
-//         Serial.print(getProgTempCurrent(s));
-//         Serial.print(" W ");
-//         Serial.print(temp_back_step_window);
-//         Serial.print(" - ");
-//         Serial.print(prg_temp_hist[s][temp_back_step_window] - prg_temp_hist[s][0]);
-//         Serial.print(" - ");
-//         Serial.print(isWindowOpen(s));
-//         Serial.print(" , V ");
-//         Serial.print(temp_back_step_head);
-//         Serial.print(" - ");
-//         Serial.print(prg_temp_hist[s][temp_back_step_head] - prg_temp_hist[s][0]);
-//         Serial.print(" - ");
-//         Serial.print(isHeadClose(s));
-//         Serial.print(" : ");
-//         Serial.print(sens_heating_pause[s]);
-//         Serial.print(" - ");
-//         Serial.print(sens_heating[s]);
-//         Serial.println();
-//     }
-//
-// }
-
-//save few last temperatures for sensors in interval
-// void save_temp_history()
-// {
-//     shift_temp_hist();
-//     for(byte s = 0;s < SENSORS;s++)
-//     {
-//         prg_temp_hist[s][0] = SensorT25::getTemperature(s);
-//     }
-// }
-
-// rotate temperature history
-// void shift_temp_hist()
-// {
-//     for(byte s = 0;s < SENSORS;s++)
-//     {
-//         for(byte i = TEMP_HIST_STEPS - 1;i > 0;i--)
-//         {
-//             prg_temp_hist[s][i] = prg_temp_hist[s][i-1];
-//         }
-//     }
-// }
-
-// calc minutes from parameter time
-// unsigned int delta_minutes(unsigned long last_lime)
-// {
-//     unsigned long ctime = millis();
-//     unsigned long delta_time = (last_lime < ctime) ? ctime - last_lime : ctime + !(last_lime) + 1;
-//     return millis2min(delta_time);
-// }
-
-// convert miliseconds to minutes
-// int millis2min(long m)
-// {
-//     return m/60000;
-// }
-
-// reset all temperature history
-// void reset_temp_hist_all()
-// {
-//     for(byte s = 0; s < SENSORS; s++)
-//     {
-//             reset_temp_hist(s);
-//     }
-// }
-
-// reset one sensor history
-// void reset_temp_hist(byte s)
-// {
-//         for(byte i = 0;i < TEMP_HIST_STEPS;i++)
-//         {
-//             prg_temp_hist[s][i] = 0.0f;
-//         }
+//         else return false;
 // }
 
 //check is temperature go down for room where is heating
-boolean isWindowOpen(byte s)
-{
-        // true if delta temp is larger then treshold and older temp is not 0
-        if((prg_temp_hist[s][temp_back_step_window] != 0) && (prg_temp_hist[s][temp_back_step_window] - prg_temp_hist[s][0]) > DELTA_WINDOW_OPEN_C)
-        {
-            return true;
-        }
-        else return false;
-}
-
-//check is temperature go down for room where is heating
-boolean isHeadClose(byte s)
-{
-        // true if delta temp is smaller then treshold and comparasion temperature is not 0
-        if((prg_temp_hist[s][temp_back_step_head] != 0) && ((prg_temp_hist[s][temp_back_step_head] - prg_temp_hist[s][0]) < DELTA_VALVE_CLOSE_C) && (getProgTempCurrent(s) - TEMP_LIMIT > SensorT25::getTemperature(s)))
-        {
-            return true;
-        }
-        else return false;
-}
-
-// set it only if room is heating and heatin pause is not set and delta temp is larger then treshold
-// void setHeatingPause(byte s)
+// boolean isHeadClose(byte s)
 // {
-//     Serial.print("BP setHP "); Serial.print(s); Serial.print(' ');
-//     if(sens_heating[s] && (sens_heating_pause[s] == 0) && isWindowOpen(s))
-//     {
-//         Serial.print("true W");
-//         sens_heating_pause[s] = HEATING_PAUSE_WINDOW;
-//         sens_heating_pause_active[s] = true;                                   // pause is activated
-//     }
-// }
-
-// check all sensors for heating pause
-// void checkHeatingPause()
-// {
-//     for(byte s = 0; s < SENSORS; s++)
-//     {
-//             setHeatingPause(s);
-//     }
-// }
-
-// count down heating pauses
-// void countdownHeatingPause()
-// {
-//     for(byte s = 0; s < SENSORS; s++)
-//     {
-//         if(sens_heating_pause[s] != 0)
+//         // true if delta temp is smaller then treshold and comparasion temperature is not 0
+//         if((prg_temp_hist[s][temp_back_step_head] != 0) && ((prg_temp_hist[s][temp_back_step_head] - prg_temp_hist[s][0]) < DELTA_VALVE_CLOSE_C) && (getProgTempCurrent(s) - TEMP_LIMIT > SensorT25::getTemperature(s)))
 //         {
-//             sens_heating_pause[s]--;
+//             return true;
 //         }
-//         // turn of heatin pause status and reset history
-//         if(sens_heating_pause[s] == 0 && sens_heating_pause_active[s] == true)
-//         {
-//             sens_heating_pause_active[s] = false;
-//             reset_temp_hist(s);
-//         }
-//     }
+//         else return false;
 // }
 
 // get if is sensor paused
-boolean isSensorPaused(byte s)
-{
-    return (sens_heating_pause[s] > 0) ? true :false;
-}
+// boolean isSensorPaused(byte s)
+// {
+//     return (sens_heating_pause[s] > 0) ? true :false;
+// }
 
 /*****************************************************************************
 *
@@ -784,7 +609,6 @@ void eeprom_save_delay(byte c)
 void new_boot()
 {
     eeprom_inc_boots();
-    //eeprom_write_boottime(rtc.getUnixTime(rtc.getTime())); new rtc lib
     t = rtc.now();
     eeprom_write_boottime(t.unixtime());
 }
@@ -852,437 +676,17 @@ void eeprom_write_actwtdog(bool v)
 *
 ******************************************************************************/
 
-//v2 delete
-//String menu_settings[]={"PROGRAMY","CAS","OKNO","CASOVAC",""};
-//String menu_settings[]={"CAS",""};
-//v2 delete
-// void stmenu_print(String* menu_array, byte position)
-// {
-//     lcd.clear();
-//     lcd.setCursor(0,0);
-//     lcd.print(menu_array[position]);
-//     lcd.setCursor(0,1);
-//     lcd.print(menu_array[position + 1]);
-// }
-
-
-//v2 delete
-//setting of termostart menu , called by SET key
-// void set_termostat2()
-// {
-//     boolean goloop = true;
-//     byte menu_position = 0;
-//     byte menu_lenght = 4;
-//     byte menu_row = 0;
-//     bool menu_refresh = false;
-//     //stmenu_print(menu_settings,menu_position);
-//     lcd.setCursor(0,menu_row);
-//     lcd.blink();
-//     // loop for choise from menu
-//     long etime = millis();
-//     while ((goloop == true) && ((millis() - etime) < EXIT_TIME))
-//     {
-//         wdt_reset();
-//         key = keypad.getKey();
-//         switch (key)
-//         {
-//             case KEYLEFT:
-//             case KEYRIGHT:
-//                 menu_position = 255;
-//                 goloop = false;
-//                 break;
-//             case KEYUP:
-//                 menu_position--;
-//                 menu_refresh = true;
-//                 break;
-//             case KEYDOWN:
-//                 menu_position++;
-//                 menu_refresh = true;
-//                 break;
-//           case KEYSET:
-//             goloop = false;
-//             break;
-//         }
-//         if(key > 0) etime = millis();
-//         if(menu_refresh)
-//         {
-//             if(menu_position > menu_lenght) menu_position = menu_lenght - 1;
-//             if(menu_position == menu_lenght) menu_position = 0;
-//             //stmenu_print(menu_settings,menu_position);
-//             lcd.setCursor(0,menu_row);
-//             lcd.blink();
-//             menu_refresh = false;
-//         }
-//     }
-//     switch (menu_position)
-//     {
-//         case 0:
-//             break;
-//         case 1:
-//             //set_time();
-//             break;
-//         case 2:
-//             break;
-//         case 3:
-//             break;
-//         case 255:
-//             break;
-//     }
-//     lcd.clear();
-// }
-
-// set time in RTC
-// void set_time()
-// {
-//   t = rtc.now();
-//   // time variables for change time
-//   tmpYear = t.year();
-//   tmpMonth = t.month();
-//   tmpDate = t.day();
-//   tmpHour = t.hour();
-//   tmpMinute = t.minute();
-//
-//   boolean goloop = true;
-//   cur_pos_c = TIME_HCOL;
-//   cur_pos_r = TIME_ROW;
-//   lcd.clear();
-//   //print_set_time(0,0);
-//   //print_set_date(0,1);
-//   lcd.setCursor(cur_pos_c,cur_pos_r);
-//   lcd.blink();
-//   long etime = millis();
-//   while (goloop && ((millis() - etime) < EXIT_TIME))
-//   {
-//       wdt_reset();
-//       key = keypad.getKey();
-//       switch (key)
-//       {
-//         case KEYLEFT:
-//         case KEYRIGHT:
-//           //select_number(key);
-//           break;
-//         case KEYUP:
-//         case KEYDOWN:
-//           //set_value(key);
-//           break;
-//         case KEYSET:
-//           goloop = false;
-//           break;
-//       }
-//       if(key > 0) etime = millis();
-//   }
-//   //write_time();                 // write time into RTC
-// }
 
 // write time into RTC with approve
 void write_time()
 {
-  // boolean goloop = true;
-  // lcd.setCursor(TIME_SCOL + 3,TIME_ROW);
-  // lcd.print("SET");
-  // delay(1000);
-  // lcd.setCursor(TIME_SCOL + 3,TIME_ROW);
-  // lcd.blink();
-  // long etime = millis();
-  // while (goloop && ((millis() - etime) < EXIT_TIME))
-  // {
-  //     wdt_reset();
-  //     key = keypad.getKey();
-  //     switch (key)
-  //     {
-  //       case KEYLEFT:
-  //       case KEYRIGHT:
-  //       case KEYUP:
-  //       case KEYDOWN:
-  //         goloop = false;
-  //         break;
-  //       case KEYSET:
-  //         goloop = false;
-          // lcd.clear();
-          // lcd.print("Set time");
           Clock.setHour(tmpHour);
           Clock.setMinute(tmpMinute);
           Clock.setSecond(0);
           Clock.setDate(tmpDate);
           Clock.setMonth(tmpMonth);
           Clock.setYear(tmpYear - 2000);
-  //         break;
-  //     }
-  //     if(key > 0) etime = millis();
-  // }
 }
-
-// select number in set time for RTC
-// void select_number(byte k)
-// {
-//   if(cur_pos_r == 0)
-//   {
-//     switch (cur_pos_c)
-//     {
-//       case TIME_HCOL:
-//         switch (k)
-//         {
-//           case KEYLEFT:
-//             cur_pos_c = DATE_YCOL + 3;
-//             cur_pos_r =1;
-//             break;
-//           case KEYRIGHT:
-//             cur_pos_c++;
-//             break;
-//         }
-//         break;
-//       case TIME_HCOL + 1:
-//         switch (k)
-//         {
-//           case KEYLEFT:
-//             cur_pos_c--;
-//             break;
-//           case KEYRIGHT:
-//             cur_pos_c+=2;
-//             break;
-//         }
-//         break;
-//       case TIME_MCOL:
-//         switch (k)
-//         {
-//           case KEYLEFT:
-//             cur_pos_c-=2;
-//             break;
-//           case KEYRIGHT:
-//             cur_pos_c++;
-//             break;
-//         }
-//         break;
-//       case TIME_MCOL + 1:
-//         switch (k)
-//         {
-//           case KEYLEFT:
-//             cur_pos_c--;
-//             break;
-//           case KEYRIGHT:
-//             cur_pos_c = DATE_DCOL;
-//             cur_pos_r = 1;
-//             break;
-//         }
-//         break;
-//       }
-//   }
-//   else
-//   {
-//     switch (cur_pos_c)
-//     {
-//       case DATE_DCOL:
-//         switch (k)
-//         {
-//           case KEYLEFT:
-//             cur_pos_c = TIME_MCOL + 1;
-//             cur_pos_r =0;
-//             break;
-//           case KEYRIGHT:
-//             cur_pos_c++;
-//             break;
-//         }
-//         break;
-//       case DATE_DCOL + 1:
-//         switch (k)
-//         {
-//           case KEYLEFT:
-//             cur_pos_c--;
-//             break;
-//           case KEYRIGHT:
-//             cur_pos_c = DATE_MCOL + 1;
-//             break;
-//         }
-//         break;
-//       case DATE_MCOL + 1:
-//         switch (k)
-//         {
-//           case KEYLEFT:
-//             cur_pos_c = DATE_DCOL + 1;
-//             break;
-//           case KEYRIGHT:
-//             cur_pos_c = DATE_YCOL + 3;
-//             break;
-//         }
-//         break;
-//       case DATE_YCOL + 3:
-//         switch (k)
-//         {
-//           case KEYLEFT:
-//             cur_pos_c = DATE_MCOL + 1;
-//             break;
-//           case KEYRIGHT:
-//             cur_pos_c = TIME_HCOL;
-//             cur_pos_r = 0;
-//             break;
-//         }
-//         break;
-//       }
-//
-//   }
-//   lcd.setCursor(cur_pos_c,cur_pos_r);
-// }
-
-// set value of digit for time
-// void set_value(byte k)
-// {
-//   if(cur_pos_r == 0)
-//   {
-//     switch (cur_pos_c)
-//     {
-//       case TIME_HCOL:
-//         switch (k)
-//         {
-//           case KEYUP:
-//             tmpHour+=10; //newlib
-//             if(tmpHour > 23) tmpHour = 0;
-//             break;
-//           case KEYDOWN:
-//             tmpHour-=10;
-//             if(tmpHour > 23) tmpHour = 23;
-//             break;
-//         }
-//         break;
-//       case TIME_HCOL + 1:
-//         switch (k)
-//         {
-//           case KEYUP:
-//             tmpHour++;
-//             if(tmpHour > 23) tmpHour = 0;
-//             break;
-//           case KEYDOWN:
-//             tmpHour--;
-//             if(tmpHour > 23) tmpHour = 23;
-//             break;
-//         }
-//         break;
-//       case TIME_MCOL:
-//         switch (k)
-//         {
-//           case KEYUP:
-//             tmpMinute+=10;
-//             if(tmpMinute > 59) tmpMinute = 0;
-//             break;
-//           case KEYDOWN:
-//             tmpMinute-=10;
-//             if(tmpMinute > 59) tmpMinute = 59;
-//             break;
-//         }
-//         break;
-//       case TIME_MCOL + 1:
-//         switch (k)
-//         {
-//           case KEYUP:
-//             tmpMinute++;
-//             if(tmpMinute > 59) tmpMinute = 0;
-//             break;
-//           case KEYDOWN:
-//             tmpMinute--;
-//             if(tmpMinute > 59) tmpMinute = 59;
-//             break;
-//         }
-//         break;
-//       }
-//   }
-//   else
-//   {
-//     switch (cur_pos_c)
-//     {
-//       case DATE_DCOL:
-//         switch (k)
-//         {
-//           case KEYUP:
-//             tmpDate+=10;
-//             if(tmpDate > 31) tmpDate = 1;
-//             break;
-//           case KEYDOWN:
-//             tmpDate-=10;
-//             if(tmpDate > 31) tmpDate = 31;
-//             break;
-//         }
-//         break;
-//       case DATE_DCOL + 1:
-//         switch (k)
-//         {
-//           case KEYUP:
-//             tmpDate++;
-//             if(tmpDate > 31) tmpDate = 1;
-//             break;
-//           case KEYDOWN:
-//             tmpDate--;
-//             if(tmpDate > 31) tmpDate = 31;
-//             break;
-//         }
-//         break;
-//       case DATE_MCOL + 1:
-//         switch (k)
-//         {
-//           case KEYUP:
-//             tmpMonth++;
-//             if(tmpMonth > 12) tmpMonth = 1;
-//             break;
-//           case KEYDOWN:
-//             tmpMonth--;
-//             if(tmpMonth > 12 || tmpMonth < 1) tmpMonth = 12;
-//             break;
-//         }
-//         break;
-//       case DATE_YCOL + 3:
-//         switch (k)
-//         {
-//           case KEYUP:
-//             tmpYear++;
-//             if(tmpYear > 3000) tmpYear = 2000;
-//             break;
-//           case KEYDOWN:
-//             tmpYear--;
-//             if(tmpYear > 3000) tmpYear = 2999;
-//             break;
-//         }
-//         break;
-//       }
-//   }
-//   delay(100);
-//   //print_set_time(0,0);
-//   //print_set_date(0,1);
-//   lcd.setCursor(cur_pos_c,cur_pos_r);
-//   lcd.blink();
-// }
-
-// print time for set
-// void print_set_time(byte c, byte r)
-// {
-//   lcd.setCursor(c,r);
-//   lcd.print("Cas:");
-//   lcd.setCursor(c+TIME_HCOL,r);
-//   if(tmpHour < 10) lcd.print('0');
-//   lcd.print(tmpHour);
-//   lcd.print(':');
-//   lcd.setCursor(c+TIME_MCOL,r);
-//   if(tmpMinute < 10) lcd.print('0');
-//   lcd.print(tmpMinute);
-//   lcd.print(':');
-//   lcd.setCursor(c+TIME_SCOL,r);
-//   lcd.print("00");
-// }
-
-// print date for set
-// void print_set_date(byte c, byte r)
-// {
-//   lcd.setCursor(c,r);
-//   lcd.print("Datum:");
-//   lcd.setCursor(c+DATE_DCOL,r);
-//   if(tmpDate < 10) lcd.print('0');
-//   lcd.print(tmpDate);
-//   lcd.print('/');
-//   lcd.setCursor(c+DATE_MCOL,r);
-//   if(tmpMonth < 10) lcd.print('0');
-//   lcd.print(tmpMonth);
-//   lcd.print('/');
-//   lcd.setCursor(c+DATE_YCOL,r);
-//   if(tmpYear < 2000) tmpYear = 2000;
-//   lcd.print(tmpYear);
-// }
 
 /*****************************************************************************
 *
@@ -1295,7 +699,8 @@ void calc_heating()
 {
     for(byte c = 0; c < SENSORS; c++)          // loop for all chanes
     {
-      if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)) && (! isSensorPaused(c)))
+      //if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)) && (! isSensorPaused(c)))
+      if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)))
       {
         sens_heating[c] = true;
       }
@@ -1678,7 +1083,7 @@ void print_state(byte c, byte col, byte row)
     char x;
     lcd.setCursor(col, row);
     if(isSensorDelay(c)) x = 'z';
-    else if(isSensorPaused(c)) x = 'p';
+    //else if(isSensorPaused(c)) x = 'p';
     else x = getSensorProg(c);
     lcd.print(x);
 }
