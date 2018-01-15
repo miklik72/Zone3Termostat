@@ -154,6 +154,7 @@ long relay_oldtime = millis();
 #define EEPROM_OFFSET_PROGS EEPROM_OFFSET_PSET + 1       // 17 - 107 Termostat programs - 5x6x3B = 6 steps temperature + HHMM for programs
 //EEPROM 11 extension for watchdog
 #define EEPROM_OFFSET_BOOTS EEPROM_OFFSET_PROGS + (PROGRAMS * DAY_STEP * 3)  // 108-109 - boots counter 2B
+//const *uint16_t EEPROM_OFFSET_BOOTS = EEPROM_OFFSET_PROGS + (PROGRAMS * DAY_STEP * 3);  // 108-109 - boots counter 2B
 #define EEPROM_OFFSET_BOOTTIME EEPROM_OFFSET_BOOTS + 2                       // 110-113 - boot time and date 4B
 //EEPROM 12 extension for window open check
 #define EEPROM_OFFSET_ACTWTDOG EEPROM_OFFSET_BOOTTIME + 4                   // 114 - active watchdog 1B
@@ -283,6 +284,765 @@ boolean refreshtime = false;
 
 /*****************************************************************************
 *
+*                           EEPROM functions
+*
+******************************************************************************/
+
+// set initial active values for sensors to false
+void eeprom_format_act()
+{
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      EEPROM.write(EEPROM_OFFSET_ACT + s,0);
+    }
+}
+
+// set initial program for sensors to 0 = a
+void eeprom_format_prg()
+{
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      EEPROM.write(EEPROM_OFFSET_PRG + s,0);
+    }
+}
+
+// reset delay date for sensors
+void eeprom_format_delay()
+{
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      for(byte i = 0; i < 3;i++)
+      {
+       EEPROM.write(EEPROM_OFFSET_DELAY + (s * 3) + i,0);
+      }
+    }
+}
+
+// set initial values for programs
+void eeprom_reset_progs(byte p)
+{
+    for(byte s = 0;s < DAY_STEP;s++)
+    {
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3), init_temp[p][s]);
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1, init_time[p][s] / 100);
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2, init_time[p][s] % 100);
+    }
+}
+
+// set initial values for programs 0-4 or a-e
+void eeprom_format_progs()
+{
+    for(byte p = 0;p < PROGRAMS;p++)
+    {
+        eeprom_reset_progs(p);
+    }
+    EEPROM.write(EEPROM_OFFSET_PSET, 1);
+}
+
+//write to boots counter
+void eeprom_write_boots(uint16_t v)
+{
+    eeprom_write_word(EEPROM_OFFSET_BOOTS,v);
+}
+
+//write boot time
+void eeprom_write_boottime(long v)
+{
+    eeprom_write_dword(EEPROM_OFFSET_BOOTTIME,v);
+}
+
+// set EEPROM structure version
+void eeprom_set_version()
+{
+    EEPROM.write(EEPROM_OFFSET_VERSION, EEPROM_VERSION);
+}
+
+// set initial values for booting log
+void eeprom_format_boot()
+{
+    eeprom_write_boots(0);
+    eeprom_write_boottime(0);
+}
+
+// format EEPROM to initial state and values
+//void eeprom_format(byte v)
+void eeprom_format()
+{
+    eeprom_format_act();
+    eeprom_format_prg();
+    eeprom_format_delay();
+    eeprom_format_progs();
+    eeprom_format_boot();
+    eeprom_set_version();
+}
+
+
+//check EEPROM data structure version and initialize it or migrate
+void eeprom_init()
+{
+    byte eeprom_version = EEPROM.read(EEPROM_OFFSET_VERSION);           // read EEPROM version from eeprom
+    if(eeprom_version == 0 || eeprom_version == 255)                    // default init value in EEPROM, format EEPROM to initial state
+    {
+        //eeprom_format(eeprom_version);
+        eeprom_format();
+    }
+    else if (eeprom_version < EEPROM_VERSION)                          // new EEPROM data structure version
+    {
+        if(eeprom_version < 12)
+        {
+            eeprom_format_boot();   // chnage word dword read/write EEPROM by eeprom.h function
+        }
+        eeprom_set_version();
+    }
+    else if (eeprom_version > EEPROM_VERSION)                          // older EEPROM data structure version
+    {
+        //eeprom_format(eeprom_version);
+        eeprom_set_version();
+    }
+}
+
+// load programs values from EEPROM
+void eeprom_load_progs(byte p)
+{
+    for(byte s = 0;s < DAY_STEP;s++)
+    {
+        prg_temp[p][s] = EEPROM.read(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3));
+        prg_time[p][s] = EEPROM.read(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1) * 100;
+        prg_time[p][s] += EEPROM.read(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2);
+    }
+}
+
+//set initial values for program
+void eeprom_init_progs()
+{
+    if(EEPROM.read(EEPROM_OFFSET_PSET) != 1)
+    {
+        eeprom_format_progs();
+    } else
+    {
+        for(byte p = 0;p < PROGRAMS;p++)
+        {
+            eeprom_load_progs(p);
+        }
+    }
+}
+
+// write programs to EEPROM
+void eeprom_write_progs(byte p)
+{
+    for(byte s = 0;s < DAY_STEP;s++)
+    {
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3), prg_temp[p][s]);
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1, prg_time[p][s] / 100);
+        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2, prg_time[p][s] % 100);
+    }
+}
+
+//read window open activation
+boolean eeprom_read_actwindow()
+{
+    return EEPROM.read(EEPROM_OFFSET_ACTWINDOW);
+}
+
+//write window open activation
+void eeprom_write_actwindow(bool v)
+{
+    EEPROM.write(EEPROM_OFFSET_ACTWINDOW,v);
+}
+
+//read window open activation
+boolean eeprom_read_actwtdog()
+{
+    return EEPROM.read(EEPROM_OFFSET_ACTWTDOG);
+}
+
+//write window open activation
+void eeprom_write_actwtdog(bool v)
+{
+    EEPROM.write(EEPROM_OFFSET_ACTWTDOG,v);
+}
+
+// load values from EEPROM to variables , example during start
+void eeprom_load()
+{
+    // restore active sensors
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      sens_active[s] = EEPROM.read(EEPROM_OFFSET_ACT + s);
+    }
+    //restore sensors program
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      sens_prg[s] = EEPROM.read(EEPROM_OFFSET_PRG + s);
+    }
+    //restore sensors delay
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      for(byte i = 0; i < 3;i++)
+      {
+       sens_delay[s][i] = EEPROM.read(EEPROM_OFFSET_DELAY + (s * 3) + i);
+      }
+    }
+    //restore programs values
+    for(byte s = 0; s < SENSORS;s++)
+    {
+      eeprom_load_progs(s);
+    }
+
+    // EEPROM 12,13
+    byte a = 0;
+    a = eeprom_read_actwindow();
+    if(a == 0 || a == 1) active_window_pause = a;
+
+    a = eeprom_read_actwtdog();
+    if(a == 0 || a == 1) active_watchdog = a;
+}
+
+// save sensor activation to EEPROM
+void eeprom_save_active(byte c)
+{
+  EEPROM.write(EEPROM_OFFSET_ACT + c,sens_active[c]);
+}
+
+// save program for sensor to EEPROM
+void eeprom_save_prg(byte c)
+{
+  EEPROM.write(EEPROM_OFFSET_PRG + c,sens_prg[c]);
+}
+
+// save delay for sensor to EEPROM
+void eeprom_save_delay(byte c)
+{
+  EEPROM.write(EEPROM_OFFSET_DELAY + (c*3),sens_delay[c][0]);
+  EEPROM.write(EEPROM_OFFSET_DELAY + (c*3)+1,sens_delay[c][1]);
+  EEPROM.write(EEPROM_OFFSET_DELAY + (c*3)+2,sens_delay[c][2]);
+}
+
+//read boots counter
+unsigned int eeprom_read_boots()
+{
+    return eeprom_read_word(EEPROM_OFFSET_BOOTS);
+}
+
+//increment boots counter
+void eeprom_inc_boots()
+{
+    eeprom_write_boots(eeprom_read_boots() + 1);
+}
+
+//new boot
+void new_boot()
+{
+    eeprom_inc_boots();
+    t = rtc.now();
+    eeprom_write_boottime(t.unixtime());
+}
+
+
+//read boottime
+long eeprom_read_boottime()
+{
+    return eeprom_read_dword(EEPROM_OFFSET_BOOTTIME);
+}
+
+/*****************************************************************************
+*
+*        functions for recognize open window or closed radiators valve
+*
+******************************************************************************/
+
+//check is temperature go down for room where is heating
+// boolean isWindowOpen(byte s)
+// {
+//         // true if delta temp is larger then treshold and older temp is not 0
+//         if((prg_temp_hist[s][temp_back_step_window] != 0) && (prg_temp_hist[s][temp_back_step_window] - prg_temp_hist[s][0]) > DELTA_WINDOW_OPEN_C)
+//         {
+//             return true;
+//         }
+//         else return false;
+// }
+
+//check is temperature go down for room where is heating
+// boolean isHeadClose(byte s)
+// {
+//         // true if delta temp is smaller then treshold and comparasion temperature is not 0
+//         if((prg_temp_hist[s][temp_back_step_head] != 0) && ((prg_temp_hist[s][temp_back_step_head] - prg_temp_hist[s][0]) < DELTA_VALVE_CLOSE_C) && (getProgTempCurrent(s) - TEMP_LIMIT > SensorT25::getTemperature(s)))
+//         {
+//             return true;
+//         }
+//         else return false;
+// }
+
+// get if is sensor paused
+// boolean isSensorPaused(byte s)
+// {
+//     return (sens_heating_pause[s] > 0) ? true :false;
+// }
+
+
+/*****************************************************************************
+*
+*                           Set termostat menu and functions
+*
+******************************************************************************/
+
+
+// write time into RTC with approve
+void write_time()
+{
+          Clock.setHour(tmpHour);
+          Clock.setMinute(tmpMinute);
+          Clock.setSecond(0);
+          Clock.setDate(tmpDate);
+          Clock.setMonth(tmpMonth);
+          Clock.setYear(tmpYear - 2000);
+}
+
+/**
+
+FUNCTIONS
+
+*/
+
+// set delay date
+void set_date_delay(byte c, byte k)
+{
+  t = rtc.now();
+  if((sens_delay[c][0] < 1 || sens_delay[c][0] > 31) || (sens_delay[c][1] < 1 || sens_delay[c][1] > 12))
+  {
+     sens_delay[c][0] = t.day();
+     sens_delay[c][1] = t.month();
+  }
+
+  switch (k)
+  {
+    case KEYRIGHT:
+      sens_delay[c][0]++;
+      if(sens_delay[c][0] > 31)
+      {
+        sens_delay[c][0] = 1;
+        sens_delay[c][1]++;
+      }
+      if(sens_delay[c][1] > 12) sens_delay[c][1] = 1;
+      break;
+    case KEYLEFT:
+      sens_delay[c][0]--;
+      if(sens_delay[c][0] < 1)
+      {
+        sens_delay[c][0] = 31;
+        sens_delay[c][1]--;
+      }
+      if(sens_delay[c][1] < 1) sens_delay[c][1] = 12;
+      break;
+  }
+}
+
+// set delay time
+void set_time_delay(byte c)
+{
+  t = rtc.now();
+  if(sens_delay[c][2] > 23) sens_delay[c][2] = t.hour();
+  sens_delay[c][2]++;
+  if(sens_delay[c][2] > 23) sens_delay[c][2] = 1;
+}
+
+//get time in format HHMM as integer
+int getTimeHHMM()
+{
+  t = rtc.now();
+  return t.hour()*100+t.minute();
+}
+
+// eveluate currently used program step
+byte getProgStep(byte c)
+{
+  byte p = sens_prg[c];
+  unsigned int ct = getTimeHHMM();
+  byte i;
+  for(i = 0; i < DAY_STEP; i++)
+  {
+    if (prg_time[p][i] > ct || prg_time[p][i] == 0) // check that prog step time is larger then current time or not set
+    {
+      break;
+    }
+  }
+  if(i == 0)  // if is got step 0 go during program backward to last valid (not null)
+  {
+    i = DAY_STEP - 1;
+    for(int j = i;j >= 0; j--)
+    {
+      if(prg_time[p][j] != 0)
+      {
+        i = j;
+        break;
+      }
+    }
+  }
+  else i--;  // go back to current prog step
+  return i;
+}
+
+// next program step for sensor
+byte getNextProgStep(byte c)
+{
+  byte p = sens_prg[c];
+  byte i = getProgStep(c);
+  i++;
+  if(prg_time[p][i] == 0 || i >= DAY_STEP) i = 0;  // set i to day start if step value is 0 or over flow
+  return i;
+}
+
+// print current program step for sensor
+void print_prog_step(byte c,byte col, byte row)
+{
+  byte p = sens_prg[c];
+  byte s = getProgStep(c);
+
+  lcd.setCursor(col, row);
+  lcd.print(prg_time[p][s]);
+  lcd.print(' ');
+  lcd.print(prg_temp[p][s]);
+  lcd.print(' ');
+  // print next prog time
+  s = getNextProgStep(c);
+  lcd.print(prg_time[p][s]);
+  lcd.print(' ');
+  lcd.print(prg_temp[p][s]);
+}
+
+// convert time as int number to HH:MM
+String prgInt2Time(int time)
+{
+  String h = String(time/100);
+  String m = String(time%100);
+  //if(h.length() < 2) h = ' '+h;
+  if(m.length() < 2) m = '0'+m;
+  return h+':'+m;
+}
+
+// chnage program of sensor
+void sensor_prog_change(byte c, int k)
+{
+  switch (k)
+  {
+    case KEYLEFT:
+      sens_prg[c]--;
+      break;
+    case KEYRIGHT:
+      sens_prg[c]++;
+      break;
+  }
+
+  if(sens_prg[c] == 255 ) {sens_prg[c] = PROGRAMS-1;}
+  else if(sens_prg[c] >= PROGRAMS) {sens_prg[c] = 0;}
+
+  eeprom_save_prg(c);
+}
+
+void print_chanel(byte c)
+{
+  lcd.write((sens_active[c]) ? c : (c+49));
+}
+
+// print temperature for sensor on LCD
+void print_temperature(byte c, byte col, byte row)
+{
+  if (SensorT25::getTemperature(c) >= 0) {col++;}
+  if (SensorT25::getTemperature(c) <= 9) {col++;}
+  lcd.setCursor(col, row);
+  lcd.print(SensorT25::getTemperature(c),1);
+}
+
+// get if is delay for sensor start
+boolean isSensorDelay(byte c)
+{
+  t = rtc.now();
+  long d = (sens_delay[c][1]*10000)+(sens_delay[c][0]*100)+sens_delay[c][2];
+  long z = (t.month()*10000L)+(t.day()*100L)+t.hour();
+  return (d > z) ? true :false;
+}
+
+// Return char for program number A or a to E or e
+char getSensorProg(byte c)
+{
+  return (sens_heating[c]) ? sens_prg[c]+65 : sens_prg[c]+97;
+}
+
+// print sensor state - row 0
+void print_sensor_state_R0(byte c)
+{
+  lcdrow=INF_SENS_R;
+  lcdcol=CH_SENS_C;
+  lcd.setCursor(lcdcol, lcdrow);
+  print_chanel(c);
+  print_temperature(c,lcdcol+POS_TEMP,lcdrow);
+  lcdcol=AGE_SENS_C;
+  lcd.setCursor(lcdcol, lcdrow);
+  lcd.print(SensorT25::getValueAge(c));
+  lcd.print('s');
+  lcd.print(sens_heating_pause[c]);
+  lcd.print('m');
+  lcdcol=PRG_SENS_C-2;
+  lcd.setCursor(lcdcol, lcdrow);
+  if(isSensorDelay(c)) lcd.print('Z');
+  lcdcol=PRG_SENS_C;
+  lcd.setCursor(lcdcol, lcdrow);
+  lcd.print(getSensorProg(c));
+}
+
+// print sensor state screen
+void print_sensor_state(byte c)
+{
+  print_sensor_state_R0(c);
+  print_prog_step(c,0,1);
+}
+
+// print delay values for sensor
+void print_sensor_delay(byte c)
+{
+  if(sens_delay[c][0] < 10) lcd.print('0');
+  lcd.print(sens_delay[c][0]);
+  lcd.print('/');
+  if(sens_delay[c][1] < 10) lcd.print('0');
+  lcd.print(sens_delay[c][1]);
+  lcd.print(' ');
+  if(sens_delay[c][2] < 10) lcd.print('0');
+  lcd.print(sens_delay[c][2]);
+  lcd.print(':');
+  lcd.print("00");
+}
+
+// print sensor state
+void print_sensor_activate(byte c)
+{
+  print_sensor_state_R0(c);
+  lcd.setCursor(0,1);
+  print_sensor_delay(c);
+}
+
+//refresh lcd delay
+boolean lcd_refresh()
+{
+  if(millis() - deltime > 1000)
+  {
+    deltime = millis();
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+// print simbol of heating, relay is ON
+void print_heating(byte col, byte row)
+{
+  lcd.setCursor(col, row);
+  if(heating)
+  {
+    lcd.write(0x07);
+    lcd.setCursor(col, row);
+    lcd.blink();
+  }
+  else
+  {
+    lcd.write(' ');
+    lcd.noBlink();
+  }
+}
+
+//print sensor state and program
+void print_state(byte c, byte col, byte row)
+{
+    char x;
+    lcd.setCursor(col, row);
+    if(isSensorDelay(c)) x = 'z';
+    //else if(isSensorPaused(c)) x = 'p';
+    else x = getSensorProg(c);
+    lcd.print(x);
+}
+
+// print time on LCD
+void print_time(byte col, byte row)
+{
+  lcd.setCursor(col, row);
+  t = rtc.now();
+  if(t.hour() < 10) lcd.print(' ');
+  lcd.print(t.hour(), DEC);
+  lcd.print(':');
+  if(t.minute() < 10) lcd.print('0');
+  lcd.print(t.minute(), DEC);
+  lcd.print(':');
+  if(t.second() < 10) lcd.print('0');
+  lcd.print(t.second(), DEC);
+}
+
+//get currently wanted temperature
+int getProgTempCurrent(byte c)
+{
+    return prg_temp[sens_prg[c]][getProgStep(c)];
+}
+
+/*****************************************************************************
+*
+*                      termostat automation functions
+*
+******************************************************************************/
+
+
+
+// check if must heating
+void calc_heating()
+{
+    for(byte c = 0; c < SENSORS; c++)          // loop for all chanes
+    {
+      //if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)) && (! isSensorPaused(c)))
+      if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)))
+      {
+        sens_heating[c] = true;
+      }
+      else
+      {
+        sens_heating[c] = false;
+      }
+
+      //antifreez - under unfreez temperature
+      if(SensorT25::getTemperature(c) < UNFREEZ_TEMP && SensorT25::isValid(c)) sens_heating[c] = true;
+    }
+    heating = false;
+    for(byte c = 0; c < SENSORS; c++)          // loop for all chanels
+    {
+      if(sens_heating[c]) heating = true;
+    }
+}
+
+// set relay on or off
+void set_relay()
+{
+  if(millis() - relay_oldtime > RELAY_DELAY) // delay for prevent many changes
+  {
+    relay_oldtime = millis();
+    digitalWrite(RELAY_PIN, ! heating);  // LOW is ON
+  }
+}
+
+/*****************************************************************************
+*
+*                     main sensor operations and screen
+*
+******************************************************************************/
+
+//print main screen
+void print_main_screen()
+{
+  for(int c = 0; c < SENSORS; c++)          // for each chanels/sensors
+  {
+    switch (c)
+    {
+      case 0:
+        lcdcol = CH1_MAIN_C;
+        lcdrow = CH1_MAIN_R;
+        break;
+      case 1:
+        lcdcol = CH2_MAIN_C;
+        lcdrow = CH2_MAIN_R;
+        break;
+      case 2:
+        lcdcol = CH3_MAIN_C;
+        lcdrow = CH3_MAIN_R;
+        break;
+    }
+
+    lcd.setCursor(lcdcol, lcdrow);
+    print_chanel(c);                                        // print chanel number , invert mean active
+
+
+    if(SensorT25::isValid(c))                               // print chanel value if is valid
+    {
+      print_temperature(c,lcdcol+POS_TEMP,lcdrow);
+    }
+
+    print_state(c,lcdcol+POS_STATE,lcdrow);                 // print program of chanel state, off heating - small leter, on heating - uppercase, z - delay
+  }
+  print_time(T_MAIN_C, T_MAIN_R);                           // print current time from RTC
+
+  print_heating(H_MAIN_C,H_MAIN_R);                         // heating ON by all channels
+}
+
+// screen for activate sensor and set delay time and date
+void sensor_activate(byte c)
+{
+  lcd.clear();
+  print_sensor_activate(c);
+  boolean goloop = true;
+  delay(1000);
+  long etime = millis();
+  while (goloop && ((millis() - etime) < EXIT_TIME))
+  {
+      wdt_reset();
+      key = keypad.getKey();
+      switch (key)
+      {
+        case KEYLEFT:            // date delay
+        case KEYRIGHT:
+            set_date_delay(c,key);
+            print_sensor_activate(c);
+          break;
+        case KEYSET:               //activate-deactivate
+          sens_active[c] = (sens_active[c]) ? false : true;
+          print_sensor_activate(c);
+          break;
+        case KEYUP:              //hour delay
+            set_time_delay(c);
+            print_sensor_activate(c);
+          break;
+        case KEYDOWN:
+          goloop = false;
+          break;
+      }
+      if(key > 0) etime = millis();
+    if(lcd_refresh()) print_sensor_activate(c);
+  }
+  lcd.clear();
+  eeprom_save_delay(c);
+}
+
+//sensor state and seting
+void sensor_set(byte c)
+{
+  lcd.clear();
+  boolean goloop = true;
+  print_sensor_state(c);
+  long etime = millis();
+  while (goloop && ((millis() - etime) < EXIT_TIME))
+  {
+      wdt_reset();
+      key = keypad.getKey();
+      switch (key)
+      {
+        case KEYLEFT:                        //change program
+        case KEYRIGHT:
+          sensor_prog_change(c,key);
+          lcd.clear();
+          print_sensor_state(c);
+          break;
+        case KEYSET:                        // activate sensor
+          sensor_activate(c);
+          eeprom_save_active(c);
+          print_sensor_state(c);
+          break;
+        case KEYDOWN:                     //back
+          goloop = false;
+          break;
+      }
+      if(key > 0) etime = millis();
+    if(lcd_refresh()) print_sensor_state(c);
+  }
+  lcd.clear();
+}
+
+/*****************************************************************************
+*
 *                          SETUP / LOOP
 *
 ******************************************************************************/
@@ -369,756 +1129,4 @@ void loop()
     }
       if(lcd_refresh()) print_main_screen();
 
-}
-
-/*****************************************************************************
-*
-*        functions for recognize open window or closed radiators valve
-*
-******************************************************************************/
-
-//check is temperature go down for room where is heating
-// boolean isWindowOpen(byte s)
-// {
-//         // true if delta temp is larger then treshold and older temp is not 0
-//         if((prg_temp_hist[s][temp_back_step_window] != 0) && (prg_temp_hist[s][temp_back_step_window] - prg_temp_hist[s][0]) > DELTA_WINDOW_OPEN_C)
-//         {
-//             return true;
-//         }
-//         else return false;
-// }
-
-//check is temperature go down for room where is heating
-// boolean isHeadClose(byte s)
-// {
-//         // true if delta temp is smaller then treshold and comparasion temperature is not 0
-//         if((prg_temp_hist[s][temp_back_step_head] != 0) && ((prg_temp_hist[s][temp_back_step_head] - prg_temp_hist[s][0]) < DELTA_VALVE_CLOSE_C) && (getProgTempCurrent(s) - TEMP_LIMIT > SensorT25::getTemperature(s)))
-//         {
-//             return true;
-//         }
-//         else return false;
-// }
-
-// get if is sensor paused
-// boolean isSensorPaused(byte s)
-// {
-//     return (sens_heating_pause[s] > 0) ? true :false;
-// }
-
-/*****************************************************************************
-*
-*                           EEPROM functions
-*
-******************************************************************************/
-
-
-//check EEPROM data structure version and initialize it or migrate
-void eeprom_init()
-{
-    byte eeprom_version = EEPROM.read(EEPROM_OFFSET_VERSION);           // read EEPROM version from eeprom
-    if(eeprom_version == 0 || eeprom_version == 255)                    // default init value in EEPROM, format EEPROM to initial state
-    {
-        //eeprom_format(eeprom_version);
-        eeprom_format();
-    }
-    else if (eeprom_version < EEPROM_VERSION)                          // new EEPROM data structure version
-    {
-        if(eeprom_version < 12)
-        {
-            eeprom_format_boot();   // chnage word dword read/write EEPROM by eeprom.h function
-        }
-        eeprom_set_version();
-    }
-    else if (eeprom_version > EEPROM_VERSION)                          // older EEPROM data structure version
-    {
-        //eeprom_format(eeprom_version);
-        eeprom_set_version();
-    }
-}
-
-// format EEPROM to initial state and values
-//void eeprom_format(byte v)
-void eeprom_format()
-{
-    eeprom_format_act();
-    eeprom_format_prg();
-    eeprom_format_delay();
-    eeprom_format_progs();
-    eeprom_format_boot();
-    eeprom_set_version();
-}
-
-// set initial active values for sensors to false
-void eeprom_format_act()
-{
-    for(byte s = 0; s < SENSORS;s++)
-    {
-      EEPROM.write(EEPROM_OFFSET_ACT + s,0);
-    }
-}
-
-// set initial program for sensors to 0 = a
-void eeprom_format_prg()
-{
-    for(byte s = 0; s < SENSORS;s++)
-    {
-      EEPROM.write(EEPROM_OFFSET_PRG + s,0);
-    }
-}
-
-// reset delay date for sensors
-void eeprom_format_delay()
-{
-    for(byte s = 0; s < SENSORS;s++)
-    {
-      for(byte i = 0; i < 3;i++)
-      {
-       EEPROM.write(EEPROM_OFFSET_DELAY + (s * 3) + i,0);
-      }
-    }
-}
-
-// set initial values for programs 0-4 or a-e
-void eeprom_format_progs()
-{
-    for(byte p = 0;p < PROGRAMS;p++)
-    {
-        eeprom_reset_progs(p);
-    }
-    EEPROM.write(EEPROM_OFFSET_PSET, 1);
-}
-
-// set initial values for booting log
-void eeprom_format_boot()
-{
-    eeprom_write_boots(0);
-    eeprom_write_boottime(0);
-}
-
-// set EEPROM structure version
-void eeprom_set_version()
-{
-    EEPROM.write(EEPROM_OFFSET_VERSION, EEPROM_VERSION);
-}
-
-//set initial values for program
-void eeprom_init_progs()
-{
-    if(EEPROM.read(EEPROM_OFFSET_PSET) != 1)
-    {
-        eeprom_format_progs();
-    } else
-    {
-        for(byte p = 0;p < PROGRAMS;p++)
-        {
-            eeprom_load_progs(p);
-        }
-    }
-}
-
-// load programs values from EEPROM
-void eeprom_load_progs(byte p)
-{
-    for(byte s = 0;s < DAY_STEP;s++)
-    {
-        prg_temp[p][s] = EEPROM.read(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3));
-        prg_time[p][s] = EEPROM.read(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1) * 100;
-        prg_time[p][s] += EEPROM.read(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2);
-    }
-}
-
-// write programs to EEPROM
-void eeprom_write_progs(byte p)
-{
-    for(byte s = 0;s < DAY_STEP;s++)
-    {
-        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3), prg_temp[p][s]);
-        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1, prg_time[p][s] / 100);
-        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2, prg_time[p][s] % 100);
-    }
-}
-
-// set initial values for programs
-void eeprom_reset_progs(byte p)
-{
-    for(byte s = 0;s < DAY_STEP;s++)
-    {
-        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3), init_temp[p][s]);
-        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 1, init_time[p][s] / 100);
-        EEPROM.write(EEPROM_OFFSET_PROGS + (p * DAY_STEP * 3) + (s * 3) + 2, init_time[p][s] % 100);
-    }
-}
-
-// load values from EEPROM to variables , example during start
-void eeprom_load()
-{
-    // restore active sensors
-    for(byte s = 0; s < SENSORS;s++)
-    {
-      sens_active[s] = EEPROM.read(EEPROM_OFFSET_ACT + s);
-    }
-    //restore sensors program
-    for(byte s = 0; s < SENSORS;s++)
-    {
-      sens_prg[s] = EEPROM.read(EEPROM_OFFSET_PRG + s);
-    }
-    //restore sensors delay
-    for(byte s = 0; s < SENSORS;s++)
-    {
-      for(byte i = 0; i < 3;i++)
-      {
-       sens_delay[s][i] = EEPROM.read(EEPROM_OFFSET_DELAY + (s * 3) + i);
-      }
-    }
-    //restore programs values
-    for(byte s = 0; s < SENSORS;s++)
-    {
-      eeprom_load_progs(s);
-    }
-
-    // EEPROM 12,13
-    byte a = 0;
-    a = eeprom_read_actwindow();
-    if(a == 0 || a == 1) active_window_pause = a;
-
-    a = eeprom_read_actwtdog();
-    if(a == 0 || a == 1) active_watchdog = a;
-}
-
-// save sensor activation to EEPROM
-void eeprom_save_active(byte c)
-{
-  EEPROM.write(EEPROM_OFFSET_ACT + c,sens_active[c]);
-}
-
-// save program for sensor to EEPROM
-void eeprom_save_prg(byte c)
-{
-  EEPROM.write(EEPROM_OFFSET_PRG + c,sens_prg[c]);
-}
-
-// save delay for sensor to EEPROM
-void eeprom_save_delay(byte c)
-{
-  EEPROM.write(EEPROM_OFFSET_DELAY + (c*3),sens_delay[c][0]);
-  EEPROM.write(EEPROM_OFFSET_DELAY + (c*3)+1,sens_delay[c][1]);
-  EEPROM.write(EEPROM_OFFSET_DELAY + (c*3)+2,sens_delay[c][2]);
-}
-
-//new boot
-void new_boot()
-{
-    eeprom_inc_boots();
-    t = rtc.now();
-    eeprom_write_boottime(t.unixtime());
-}
-
-//increment boots counter
-void eeprom_inc_boots()
-{
-    eeprom_write_boots(eeprom_read_boots() + 1);
-}
-
-//read boots counter
-unsigned int eeprom_read_boots()
-{
-    return eeprom_read_word(EEPROM_OFFSET_BOOTS);
-}
-
-//write to boots counter
-void eeprom_write_boots(int v)
-{
-    eeprom_write_word(EEPROM_OFFSET_BOOTS,v);
-}
-
-//read boottime
-long eeprom_read_boottime()
-{
-    return eeprom_read_dword(EEPROM_OFFSET_BOOTTIME);
-}
-
-
-//write boot time
-void eeprom_write_boottime(long v)
-{
-    eeprom_write_dword(EEPROM_OFFSET_BOOTTIME,v);
-}
-
-//read window open activation
-boolean eeprom_read_actwindow()
-{
-    return EEPROM.read(EEPROM_OFFSET_ACTWINDOW);
-}
-
-//write window open activation
-void eeprom_write_actwindow(bool v)
-{
-    EEPROM.write(EEPROM_OFFSET_ACTWINDOW,v);
-}
-
-//read window open activation
-boolean eeprom_read_actwtdog()
-{
-    return EEPROM.read(EEPROM_OFFSET_ACTWTDOG);
-}
-
-//write window open activation
-void eeprom_write_actwtdog(bool v)
-{
-    EEPROM.write(EEPROM_OFFSET_ACTWTDOG,v);
-}
-
-
-
-/*****************************************************************************
-*
-*                           Set termostat menu and functions
-*
-******************************************************************************/
-
-
-// write time into RTC with approve
-void write_time()
-{
-          Clock.setHour(tmpHour);
-          Clock.setMinute(tmpMinute);
-          Clock.setSecond(0);
-          Clock.setDate(tmpDate);
-          Clock.setMonth(tmpMonth);
-          Clock.setYear(tmpYear - 2000);
-}
-
-/*****************************************************************************
-*
-*                      termostat automation functions
-*
-******************************************************************************/
-
-// check if must heating
-void calc_heating()
-{
-    for(byte c = 0; c < SENSORS; c++)          // loop for all chanes
-    {
-      //if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)) && (! isSensorPaused(c)))
-      if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)))
-      {
-        sens_heating[c] = true;
-      }
-      else
-      {
-        sens_heating[c] = false;
-      }
-
-      //antifreez - under unfreez temperature
-      if(SensorT25::getTemperature(c) < UNFREEZ_TEMP && SensorT25::isValid(c)) sens_heating[c] = true;
-    }
-    heating = false;
-    for(byte c = 0; c < SENSORS; c++)          // loop for all chanels
-    {
-      if(sens_heating[c]) heating = true;
-    }
-}
-
-// set relay on or off
-void set_relay()
-{
-  if(millis() - relay_oldtime > RELAY_DELAY) // delay for prevent many changes
-  {
-    relay_oldtime = millis();
-    digitalWrite(RELAY_PIN, ! heating);  // LOW is ON
-  }
-}
-
-// get if is delay for sensor start
-boolean isSensorDelay(byte c)
-{
-  t = rtc.now();
-  long d = (sens_delay[c][1]*10000)+(sens_delay[c][0]*100)+sens_delay[c][2];
-  long z = (t.month()*10000L)+(t.day()*100L)+t.hour();
-  return (d > z) ? true :false;
-}
-
-/*****************************************************************************
-*
-*                     main sensor operations and screen
-*
-******************************************************************************/
-
-//print main screen
-void print_main_screen()
-{
-  for(int c = 0; c < SENSORS; c++)          // for each chanels/sensors
-  {
-    switch (c)
-    {
-      case 0:
-        lcdcol = CH1_MAIN_C;
-        lcdrow = CH1_MAIN_R;
-        break;
-      case 1:
-        lcdcol = CH2_MAIN_C;
-        lcdrow = CH2_MAIN_R;
-        break;
-      case 2:
-        lcdcol = CH3_MAIN_C;
-        lcdrow = CH3_MAIN_R;
-        break;
-    }
-
-    lcd.setCursor(lcdcol, lcdrow);
-    print_chanel(c);                                        // print chanel number , invert mean active
-
-
-    if(SensorT25::isValid(c))                               // print chanel value if is valid
-    {
-      print_temperature(c,lcdcol+POS_TEMP,lcdrow);
-    }
-
-    print_state(c,lcdcol+POS_STATE,lcdrow);                 // print program of chanel state, off heating - small leter, on heating - uppercase, z - delay
-  }
-  print_time(T_MAIN_C, T_MAIN_R);                           // print current time from RTC
-
-  print_heating(H_MAIN_C,H_MAIN_R);                         // heating ON by all channels
-}
-
-//sensor state and seting
-void sensor_set(byte c)
-{
-  lcd.clear();
-  boolean goloop = true;
-  print_sensor_state(c);
-  long etime = millis();
-  while (goloop && ((millis() - etime) < EXIT_TIME))
-  {
-      wdt_reset();
-      key = keypad.getKey();
-      switch (key)
-      {
-        case KEYLEFT:                        //change program
-        case KEYRIGHT:
-          sensor_prog_change(c,key);
-          lcd.clear();
-          print_sensor_state(c);
-          break;
-        case KEYSET:                        // activate sensor
-          sensor_activate(c);
-          eeprom_save_active(c);
-          print_sensor_state(c);
-          break;
-        case KEYDOWN:                     //back
-          goloop = false;
-          break;
-      }
-      if(key > 0) etime = millis();
-    if(lcd_refresh()) print_sensor_state(c);
-  }
-  lcd.clear();
-}
-
-// screen for activate sensor and set delay time and date
-void sensor_activate(byte c)
-{
-  lcd.clear();
-  print_sensor_activate(c);
-  boolean goloop = true;
-  delay(1000);
-  long etime = millis();
-  while (goloop && ((millis() - etime) < EXIT_TIME))
-  {
-      wdt_reset();
-      key = keypad.getKey();
-      switch (key)
-      {
-        case KEYLEFT:            // date delay
-        case KEYRIGHT:
-            set_date_delay(c,key);
-            print_sensor_activate(c);
-          break;
-        case KEYSET:               //activate-deactivate
-          sens_active[c] = (sens_active[c]) ? false : true;
-          print_sensor_activate(c);
-          break;
-        case KEYUP:              //hour delay
-            set_time_delay(c);
-            print_sensor_activate(c);
-          break;
-        case KEYDOWN:
-          goloop = false;
-          break;
-      }
-      if(key > 0) etime = millis();
-    if(lcd_refresh()) print_sensor_activate(c);
-  }
-  lcd.clear();
-  eeprom_save_delay(c);
-}
-
-// set delay date
-void set_date_delay(byte c, byte k)
-{
-  t = rtc.now();
-  if((sens_delay[c][0] < 1 || sens_delay[c][0] > 31) || (sens_delay[c][1] < 1 || sens_delay[c][1] > 12))
-  {
-     sens_delay[c][0] = t.day();
-     sens_delay[c][1] = t.month();
-  }
-
-  switch (k)
-  {
-    case KEYRIGHT:
-      sens_delay[c][0]++;
-      if(sens_delay[c][0] > 31)
-      {
-        sens_delay[c][0] = 1;
-        sens_delay[c][1]++;
-      }
-      if(sens_delay[c][1] > 12) sens_delay[c][1] = 1;
-      break;
-    case KEYLEFT:
-      sens_delay[c][0]--;
-      if(sens_delay[c][0] < 1)
-      {
-        sens_delay[c][0] = 31;
-        sens_delay[c][1]--;
-      }
-      if(sens_delay[c][1] < 1) sens_delay[c][1] = 12;
-      break;
-  }
-}
-
-// set delay time
-void set_time_delay(byte c)
-{
-  t = rtc.now();
-  if(sens_delay[c][2] > 23) sens_delay[c][2] = t.hour();
-  sens_delay[c][2]++;
-  if(sens_delay[c][2] > 23) sens_delay[c][2] = 1;
-}
-
-//get time in format HHMM as integer
-int getTimeHHMM()
-{
-  t = rtc.now();
-  return t.hour()*100+t.minute();
-}
-
-// print current program step for sensor
-void print_prog_step(byte c,byte col, byte row)
-{
-  byte p = sens_prg[c];
-  byte s = getProgStep(c);
-
-  lcd.setCursor(col, row);
-  lcd.print(prg_time[p][s]);
-  lcd.print(' ');
-  lcd.print(prg_temp[p][s]);
-  lcd.print(' ');
-  // print next prog time
-  s = getNextProgStep(c);
-  lcd.print(prg_time[p][s]);
-  lcd.print(' ');
-  lcd.print(prg_temp[p][s]);
-}
-
-// eveluate currently used program step
-byte getProgStep(byte c)
-{
-  byte p = sens_prg[c];
-  unsigned int ct = getTimeHHMM();
-  byte i;
-  for(i = 0; i < DAY_STEP; i++)
-  {
-    if (prg_time[p][i] > ct || prg_time[p][i] == 0) // check that prog step time is larger then current time or not set
-    {
-      break;
-    }
-  }
-  if(i == 0)  // if is got step 0 go during program backward to last valid (not null)
-  {
-    i = DAY_STEP - 1;
-    for(int j = i;j >= 0; j--)
-    {
-      if(prg_time[p][j] != 0)
-      {
-        i = j;
-        break;
-      }
-    }
-  }
-  else i--;  // go back to current prog step
-  return i;
-}
-
-// next program step for sensor
-byte getNextProgStep(byte c)
-{
-  byte p = sens_prg[c];
-  byte i = getProgStep(c);
-  i++;
-  if(prg_time[p][i] == 0 || i >= DAY_STEP) i = 0;  // set i to day start if step value is 0 or over flow
-  return i;
-}
-
-//get currently wanted temperature
-int getProgTempCurrent(byte c)
-{
-    return prg_temp[sens_prg[c]][getProgStep(c)];
-}
-
-// convert time as int number to HH:MM
-String prgInt2Time(int time)
-{
-  String h = String(time/100);
-  String m = String(time%100);
-  //if(h.length() < 2) h = ' '+h;
-  if(m.length() < 2) m = '0'+m;
-  return h+':'+m;
-}
-
-// chnage program of sensor
-void sensor_prog_change(byte c, int k)
-{
-  switch (k)
-  {
-    case KEYLEFT:
-      sens_prg[c]--;
-      break;
-    case KEYRIGHT:
-      sens_prg[c]++;
-      break;
-  }
-
-  if(sens_prg[c] == 255 ) {sens_prg[c] = PROGRAMS-1;}
-  else if(sens_prg[c] >= PROGRAMS) {sens_prg[c] = 0;}
-
-  eeprom_save_prg(c);
-}
-
-// print sensor state screen
-void print_sensor_state(byte c)
-{
-  print_sensor_state_R0(c);
-  print_prog_step(c,0,1);
-}
-
-// print sensor state - row 0
-void print_sensor_state_R0(byte c)
-{
-  lcdrow=INF_SENS_R;
-  lcdcol=CH_SENS_C;
-  lcd.setCursor(lcdcol, lcdrow);
-  print_chanel(c);
-  print_temperature(c,lcdcol+POS_TEMP,lcdrow);
-  lcdcol=AGE_SENS_C;
-  lcd.setCursor(lcdcol, lcdrow);
-  lcd.print(SensorT25::getValueAge(c));
-  lcd.print('s');
-  lcd.print(sens_heating_pause[c]);
-  lcd.print('m');
-  lcdcol=PRG_SENS_C-2;
-  lcd.setCursor(lcdcol, lcdrow);
-  if(isSensorDelay(c)) lcd.print('Z');
-  lcdcol=PRG_SENS_C;
-  lcd.setCursor(lcdcol, lcdrow);
-  lcd.print(getSensorProg(c));
-}
-
-// print sensor state
-void print_sensor_activate(byte c)
-{
-  print_sensor_state_R0(c);
-  lcd.setCursor(0,1);
-  print_sensor_delay(c);
-}
-
-// print delay values for sensor
-void print_sensor_delay(byte c)
-{
-  if(sens_delay[c][0] < 10) lcd.print('0');
-  lcd.print(sens_delay[c][0]);
-  lcd.print('/');
-  if(sens_delay[c][1] < 10) lcd.print('0');
-  lcd.print(sens_delay[c][1]);
-  lcd.print(' ');
-  if(sens_delay[c][2] < 10) lcd.print('0');
-  lcd.print(sens_delay[c][2]);
-  lcd.print(':');
-  lcd.print("00");
-}
-
-//refresh lcd delay
-boolean lcd_refresh()
-{
-  if(millis() - deltime > 1000)
-  {
-    deltime = millis();
-    return true;
-  }
-  else
-  {
-    return false;
-  }
-}
-
-// print simbol of heating, relay is ON
-void print_heating(byte col, byte row)
-{
-  lcd.setCursor(col, row);
-  if(heating)
-  {
-    lcd.write(0x07);
-    lcd.setCursor(col, row);
-    lcd.blink();
-  }
-  else
-  {
-    lcd.write(' ');
-    lcd.noBlink();
-  }
-}
-
-//print sensor state and program
-void print_state(byte c, byte col, byte row)
-{
-    char x;
-    lcd.setCursor(col, row);
-    if(isSensorDelay(c)) x = 'z';
-    //else if(isSensorPaused(c)) x = 'p';
-    else x = getSensorProg(c);
-    lcd.print(x);
-}
-
-// Return char for program number A or a to E or e
-char getSensorProg(byte c)
-{
-  return (sens_heating[c]) ? sens_prg[c]+65 : sens_prg[c]+97;
-}
-
-void print_chanel(byte c)
-{
-  lcd.write((sens_active[c]) ? c : (c+49));
-}
-
-// print temperature for sensor on LCD
-void print_temperature(byte c, byte col, byte row)
-{
-  if (SensorT25::getTemperature(c) >= 0) {col++;}
-  if (SensorT25::getTemperature(c) <= 9) {col++;}
-  lcd.setCursor(col, row);
-  lcd.print(SensorT25::getTemperature(c),1);
-}
-
-// print time on LCD
-void print_time(byte col, byte row)
-{
-  lcd.setCursor(col, row);
-  t = rtc.now();
-  if(t.hour() < 10) lcd.print(' ');
-  lcd.print(t.hour(), DEC);
-  lcd.print(':');
-  if(t.minute() < 10) lcd.print('0');
-  lcd.print(t.minute(), DEC);
-  lcd.print(':');
-  if(t.second() < 10) lcd.print('0');
-  lcd.print(t.second(), DEC);
 }
