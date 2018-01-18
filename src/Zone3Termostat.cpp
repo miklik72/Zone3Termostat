@@ -7,6 +7,12 @@
 #include <DFR_KeyMM.h>
 #include <EEPROM.h>
 #include <avr/wdt.h>
+#include <WiFiEsp.h>
+#include <WifiAuth.h>              //local library with authentication to WiFi
+//char ssid[] = "SIDD";                     // your network SSID (name)
+//char pass[] = "...";                      // your network password
+#include <SoftwareSerial.h>
+
 
 /* 3 zone wireless termostat used 433Mhz temperature sensors T25
 Martin Mikala (2016) dev@miklik.cz
@@ -120,6 +126,18 @@ byte fire1[8] = {
 	0b10001,
 	0b01110
 };
+
+//#include <SoftwareSerial.h>
+SoftwareSerial Serial1(A3, A2); // RX, TX
+
+//web
+char webserver[] = "www.miklik.cz";
+int webport = 80;
+String content;
+
+// Initialize the Ethernet client object
+int status = WL_IDLE_STATUS;                // the Wifi radio's status
+WiFiEspClient client;
 
 //#include <LiquidCrystal.h>
 // initialize the library with the numbers of the interface pins
@@ -493,6 +511,25 @@ void write_time()
 *                           FUNCTIONS
 *
 ******************************************************************************/
+
+//print wifi status to serial console
+void printWifiStatus()
+{
+  // print the SSID of the network you're attached to
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your WiFi shield's IP address
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength
+  long rssi = WiFi.RSSI();
+  Serial.print("Signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
 
 // set delay date
 void set_date_delay(byte c, byte k)
@@ -935,7 +972,9 @@ void sensor_set(byte c)
 void setup()
 {
   //Serial console
-  //Serial.begin(9600);
+  Serial.begin(9600);
+  // SW serial console
+  Serial1.begin(9600);  // ESP must be set to the same speed AT+UART_DEF=9600,8,1,0,1
   // RF sensors
   SensorT25::enable(IRQ_PIN);
 
@@ -983,11 +1022,44 @@ void setup()
   eeprom_init();
   eeprom_load();
 
-  //watchdog
-  wdt_enable(WDTO_4S);  // watchdog counter to 4s
-
   //init variable
   new_boot();
+
+  lcd.setCursor(0, 0);
+  lcd.print("Start wifi");
+  delay(500);
+
+  //Wifi
+  lcd.setCursor(0, 1);
+  WiFi.init(&Serial1);
+  if (WiFi.status() == WL_NO_SHIELD) {
+    lcd.print("WiFi not present");
+    // don't continue
+    while (true);
+  }
+
+  // attempt to connect to WiFi network
+  while ( status != WL_CONNECTED) {
+    lcd.print("Try wifi:");
+    lcd.print(ssid);
+    // Connect to WPA/WPA2 network
+    status = WiFi.begin(ssid, pass);
+  }
+
+  // you're connected now, so print out the data
+  lcd.setCursor(0, 1);
+  lcd.print("Connected ");
+  lcd.print(ssid);
+  delay(1000);
+  lcd.clear();
+
+
+  //printWifiStatus();
+
+  //Serial.println();
+
+  //watchdog
+  wdt_enable(WDTO_4S);  // watchdog counter to 4s
 }
 
 void loop()
