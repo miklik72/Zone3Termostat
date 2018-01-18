@@ -193,17 +193,6 @@ boolean rom_change = false;
 #define STATE_SENS_C 11
 #define PRG_SENS_C 15
 #define EXIT_TIME 10000           //time for automatic exit to main screen in ms
-    // Time set scree
-// #define TIME_ROW 0
-// #define TIME_HCOL 4
-// #define TIME_MCOL 7
-// #define TIME_SCOL 10
-// #define DATE_ROW 1
-// #define DATE_DCOL 6
-// #define DATE_MCOL 9
-// #define DATE_YCOL 12
-// byte cur_pos_c = TIME_HCOL;
-// byte cur_pos_r = TIME_ROW;
 
   // Control keys
 #define KEYUP 3
@@ -212,61 +201,12 @@ boolean rom_change = false;
 #define KEYRIGHT 5
 #define KEYSET 1
 
-// watch heating issues
-//#define TEMP_HIST_STEPS 10                                  // keep 10 last tepm
-//#define TEMP_HIST_STEP 1                                    // time step for save temperature in minutes
-//#define TEMP_HIST_TIME TEMP_HIST_STEPS * TEMP_HIST_STEP     // whole time history keeping
-//#define DELTA_WINDOW_OPEN_C 1                               // temp delta for detect open window
-//#define DELTA_WINDOW_OPEN_TIME 5                            // time for detect open window in minutes
-//#define HEATING_PAUSE_WINDOW 30                             // how long will be heating stopped
-//#define DELTA_VALVE_CLOSE_C 1                               // temp delta for detect close valve
-//#define DELTA_VALVE_CLOSE_TIME 10                           // time for detect close valve in minutes
-//#define HEATING_PAUSE_VALVE 30                              // how long will be heating stopped in minutes
-//#define TEMP_LIMIT 1                                        // control temperature + - wanted temperature
-//bool active_window_pause = false;                            // activate window pause detection
-//float prg_temp_hist[SENSORS][TEMP_HIST_STEPS];              // temperature history for detect heating pause
-//long temp_hist_last_time = millis();                         // timestamp for calculate next temperature record
-//byte open_window[SENSORS]={0,0,0};                          // detect open window
-//byte close_valve[SENSORS]={0,0,0};                          // detect close valve
-//long open_window_time[SENSORS]={0,0,0};                     // detect open window
-//long close_valve_time[SENSORS]={0,0,0};                     // detect close valve
-
-//next
-//#define PROG_SPACE 5                    // space between values in program screen
-
-
 // Application variables
-//String act_screen = "main";
 boolean sens_active[SENSORS]={false,false,false};         // is sensor control active
 boolean sens_heating[SENSORS]={false,false,false};        // heating for sensor
-//byte sens_heating_pause[SENSORS]={0,0,0};                 // countdown heating stop when window open  or closed valve are detected, in minutes
-//boolean sens_heating_pause_active[SENSORS]={false,false,false};  // heating pause was activated
-//float sens_heating_pause_temp0[SENSORS]={0,0,0};          //save temperature when pause start
-//float sens_heating_pause_tempB[SENSORS]={0,0,0};          //save back related temperature for pause start
-//byte temp_back_step_window = (byte)ceil( (float)DELTA_WINDOW_OPEN_TIME / (float)TEMP_HIST_STEP);    // how old temp we are using for comparation if window is open
-//byte temp_back_step_head = (byte)ceil( (float)DELTA_VALVE_CLOSE_TIME / (float)TEMP_HIST_STEP);    // how old temp we are using for comparation if radiator head is closed, temperature is not growing
 long sens_delay[SENSORS][3]={{0,0,0},{0,0,0},{0,0,0}};    // activate sensor delay DDMMHH (Day Month Hour)
 boolean heating = false;                                  // control relay for turn on/off heating
 byte sens_prg[SENSORS]={2,3,1};                           // number of program for sensor
-//long time_min_count = millis();                           // variable fo count heating pause
-//bool active_watchdog = true;                              // activate watchdog
-
-// const byte init_temp[PROGRAMS][DAY_STEP] =                // temperature for programs
-// {
-//   {23,21,22,20,0,0},
-//   {22,20,0,0,0,0},
-//   {21,0,0,0,0,0},
-//   {23,20,0,0,0,0},
-//   {22,19,0,0,0,0}
-// };
-// const unsigned int init_time[PROGRAMS][DAY_STEP] =        // time points for programs
-// {
-//   {600,1000,1500,2200,0,0},                              // number format HHMM, 0 = off
-//   {600,2300,0,0,0,0},
-//   {100,0,0,0,0,0},
-//   {600,2300,0,0,0,0},
-//   {600,2200,0,0,0,0}
-// };
 
 byte prg_temp[PROGRAMS][DAY_STEP] =                           // temperature for programs
 {
@@ -374,13 +314,12 @@ void eeprom_format_boot()
 }
 
 // format EEPROM to initial state and values
-//void eeprom_format(byte v)
 void eeprom_format()
 {
     eeprom_format_act();
     eeprom_format_prg();
     eeprom_format_delay();
-    //eeprom_format_progs();
+    eeprom_format_progs();
     eeprom_format_boot();
     eeprom_set_version();
 }
@@ -392,7 +331,6 @@ void eeprom_init()
     byte eeprom_version = EEPROM.read(EEPROM_OFFSET_VERSION);           // read EEPROM version from eeprom
     if(eeprom_version == 0 || eeprom_version == 255)                    // default init value in EEPROM, format EEPROM to initial state
     {
-        //eeprom_format(eeprom_version);
         eeprom_format();
     }
     else if (eeprom_version < EEPROM_VERSION)                          // new EEPROM data structure version
@@ -405,7 +343,6 @@ void eeprom_init()
     }
     else if (eeprom_version > EEPROM_VERSION)                          // older EEPROM data structure version
     {
-        //eeprom_format(eeprom_version);
         eeprom_set_version();
     }
 }
@@ -448,18 +385,6 @@ void eeprom_write_progs(byte p)
 }
 
 //read window open activation
-// boolean eeprom_read_actwindow()
-// {
-//     return EEPROM.read(EEPROM_OFFSET_ACTWINDOW);
-// }
-
-//write window open activation
-// void eeprom_write_actwindow(bool v)
-// {
-//     EEPROM.write(EEPROM_OFFSET_ACTWINDOW,v);
-// }
-
-//read window open activation
 boolean eeprom_read_actwtdog()
 {
     return EEPROM.read(EEPROM_OFFSET_ACTWTDOG);
@@ -497,14 +422,6 @@ void eeprom_load()
     {
       eeprom_load_progs(s);
     }
-
-    // EEPROM 12,13
-    //byte a = 0;
-    //a = eeprom_read_actwindow();
-    //if(a == 0 || a == 1) active_window_pause = a;
-
-    //a = eeprom_read_actwtdog();
-    //if(a == 0 || a == 1) active_watchdog = a;
 }
 
 // save sensor activation to EEPROM
@@ -556,45 +473,9 @@ long eeprom_read_boottime()
 
 /*****************************************************************************
 *
-*        functions for recognize open window or closed radiators valve
-*
-******************************************************************************/
-
-//check is temperature go down for room where is heating
-// boolean isWindowOpen(byte s)
-// {
-//         // true if delta temp is larger then treshold and older temp is not 0
-//         if((prg_temp_hist[s][temp_back_step_window] != 0) && (prg_temp_hist[s][temp_back_step_window] - prg_temp_hist[s][0]) > DELTA_WINDOW_OPEN_C)
-//         {
-//             return true;
-//         }
-//         else return false;
-// }
-
-//check is temperature go down for room where is heating
-// boolean isHeadClose(byte s)
-// {
-//         // true if delta temp is smaller then treshold and comparasion temperature is not 0
-//         if((prg_temp_hist[s][temp_back_step_head] != 0) && ((prg_temp_hist[s][temp_back_step_head] - prg_temp_hist[s][0]) < DELTA_VALVE_CLOSE_C) && (getProgTempCurrent(s) - TEMP_LIMIT > SensorT25::getTemperature(s)))
-//         {
-//             return true;
-//         }
-//         else return false;
-// }
-
-// get if is sensor paused
-// boolean isSensorPaused(byte s)
-// {
-//     return (sens_heating_pause[s] > 0) ? true :false;
-// }
-
-
-/*****************************************************************************
-*
 *                           Set termostat menu and functions
 *
 ******************************************************************************/
-
 
 // write time into RTC with approve
 void write_time()
@@ -607,11 +488,11 @@ void write_time()
           Clock.setYear(tmpYear - 2000);
 }
 
-/**
-
-FUNCTIONS
-
-*/
+/*****************************************************************************
+*
+*                           FUNCTIONS
+*
+******************************************************************************/
 
 // set delay date
 void set_date_delay(byte c, byte k)
@@ -724,7 +605,6 @@ String prgInt2Time(int time)
 {
   String h = String(time/100);
   String m = String(time%100);
-  //if(h.length() < 2) h = ' '+h;
   if(m.length() < 2) m = '0'+m;
   return h+':'+m;
 }
@@ -789,8 +669,6 @@ void print_sensor_state_R0(byte c)
   lcd.setCursor(lcdcol, lcdrow);
   lcd.print(SensorT25::getValueAge(c));
   lcd.print('s');
-  //lcd.print(sens_heating_pause[c]);
-  //lcd.print('m');
   lcdcol=PRG_SENS_C-2;
   lcd.setCursor(lcdcol, lcdrow);
   if(isSensorDelay(c)) lcd.print('Z');
@@ -905,7 +783,6 @@ void calc_heating()
 {
     for(byte c = 0; c < SENSORS; c++)          // loop for all chanes
     {
-      //if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)) && (! isSensorPaused(c)))
       if (getProgTempCurrent(c) > SensorT25::getTemperature(c) && sens_active[c] && SensorT25::isValid(c) && (! isSensorDelay(c)))
       {
         sens_heating[c] = true;
@@ -1063,7 +940,6 @@ void setup()
   SensorT25::enable(IRQ_PIN);
 
   //RTC
-  //rtc.begin(); new lib
   Wire.begin();
 
   //LCD
