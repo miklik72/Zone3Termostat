@@ -151,6 +151,7 @@ byte lcdcol = 0;
 DS3231 Clock;
 RTClib rtc;
 DateTime t;
+DateTime webtime;
 unsigned int tmpYear;
 byte tmpMonth;
 byte tmpDate;
@@ -219,6 +220,10 @@ boolean rom_change = false;
 #define KEYRIGHT 5
 #define KEYSET 1
 
+  //wifi comunication
+#define WEB_REFRESH 5                     // comunication in minutes
+unsigned long webdelay;
+
 // Application variables
 boolean sens_active[SENSORS]={false,false,false};         // is sensor control active
 boolean sens_heating[SENSORS]={false,false,false};        // heating for sensor
@@ -248,6 +253,7 @@ unsigned int (*init_time)[PROGRAMS][DAY_STEP] = &prg_time;
 
 unsigned long deltime = 0;
 boolean refreshtime = false;
+
 
 /*****************************************************************************
 *
@@ -511,25 +517,6 @@ void write_time()
 *                           FUNCTIONS
 *
 ******************************************************************************/
-
-//print wifi status to serial console
-void printWifiStatus()
-{
-  // print the SSID of the network you're attached to
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-
-  // print your WiFi shield's IP address
-  IPAddress ip = WiFi.localIP();
-  Serial.print("IP Address: ");
-  Serial.println(ip);
-
-  // print the received signal strength
-  long rssi = WiFi.RSSI();
-  Serial.print("Signal strength (RSSI):");
-  Serial.print(rssi);
-  Serial.println(" dBm");
-}
 
 // set delay date
 void set_date_delay(byte c, byte k)
@@ -964,6 +951,125 @@ void sensor_set(byte c)
   lcd.clear();
 }
 
+void printWifiStatus()
+{
+  // print the SSID of the network you're attached to
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your WiFi shield's IP address
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength
+  long rssi = WiFi.RSSI();
+  Serial.print("Signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
+
+void init_wifi()
+{
+  lcd.setCursor(0, 0);
+  lcd.print("Start wifi");
+  //delay(500);
+
+  //Wifi
+  lcd.setCursor(0, 1);
+  WiFi.init(&Serial1);
+  if (WiFi.status() == WL_NO_SHIELD) {
+    lcd.print("WiFi not present");
+    // don't continue
+    return;
+  }
+
+  // attempt to connect to WiFi network
+  while ( status != WL_CONNECTED) {
+    lcd.print("Try wifi:");
+    lcd.print(ssid);
+    // Connect to WPA/WPA2 network
+    status = WiFi.begin(ssid, pass);
+  }
+  //printWifiStatus();
+
+  // you're connected now, so print out the data
+  lcd.setCursor(0, 1);
+  lcd.print("Connected ");
+  lcd.print(ssid);
+  delay(500);
+  lcd.clear();
+}
+
+/*****************************************************************************
+*
+*                          WEB methods
+*
+******************************************************************************/
+
+void webget_config()
+{
+  SensorT25::disable(IRQ_PIN);
+  String page = "GET /config.php";
+  //Serial.println("GET page");
+  if (client.connect(webserver, webport)) {
+    //Serial.println("Connected to server");
+    client.print(page);
+    //client.print("?");
+    //client.print(content);
+    client.println(" HTTP/1.1");
+    client.println("Host: z3t.miklik.cz");
+    client.println("Content-Type: application/x-www-form-urlencoded");
+    client.println("Connection: close");
+    client.println();
+  }
+  // loop for response from WEB
+  String webreq;
+  String webdata;
+  bool webdata_valid = false;
+  while(client.connected()) {
+    while(client.available()) {
+      webreq = client.readStringUntil('\n');
+      //Serial.println(webreq);
+      //Serial.write(client.read());
+      if (webreq.length() == 1 && ! webdata_valid) {
+        webreq = client.readStringUntil('\n');
+        //Serial.println(webreq);
+        //webdata_lenght = webreq.toInt();
+        webdata = client.readStringUntil('\n');
+        //Serial.println(webdata);
+        webdata_valid = true;
+      }
+      //wdt_reset();
+      }
+      //Serial.print('#');
+      Serial.println(webdata);
+      webtime = webdata.toDouble();
+      //webtime = rtc.now();
+      // Serial.println(webtime.year());
+      // Serial.println(webtime.month());
+      // Serial.println(webtime.day());
+      // Serial.println(webtime.hour());
+      // Serial.println(webtime.minute());
+      // Serial.println(webtime.second());
+      // Serial.println(webtime.unixtime());
+      // set time in RTC
+      Clock.setHour(webtime.hour());
+      Clock.setMinute(webtime.minute());
+      Clock.setSecond(webtime.second());
+      Clock.setDate(webtime.day());
+      Clock.setMonth(webtime.month());
+      Clock.setYear(webtime.year() - 2000);
+
+  }
+  if (!client.connected()) {
+    Serial.println();
+    Serial.println("Disconnecting from server...");
+    client.stop();
+  }
+  SensorT25::enable(IRQ_PIN);
+}
+
 /*****************************************************************************
 *
 *                          SETUP / LOOP
@@ -975,8 +1081,6 @@ void setup()
   Serial.begin(9600);
   // SW serial console
   Serial1.begin(9600);  // ESP must be set to the same speed AT+UART_DEF=9600,8,1,0,1
-  // RF sensors
-  SensorT25::enable(IRQ_PIN);
 
   //RTC
   Wire.begin();
@@ -1025,41 +1129,17 @@ void setup()
   //init variable
   new_boot();
 
-  lcd.setCursor(0, 0);
-  lcd.print("Start wifi");
-  delay(500);
+  // initialize connection to Wifi
+  init_wifi();
 
-  //Wifi
-  lcd.setCursor(0, 1);
-  WiFi.init(&Serial1);
-  if (WiFi.status() == WL_NO_SHIELD) {
-    lcd.print("WiFi not present");
-    // don't continue
-    while (true);
-  }
-
-  // attempt to connect to WiFi network
-  while ( status != WL_CONNECTED) {
-    lcd.print("Try wifi:");
-    lcd.print(ssid);
-    // Connect to WPA/WPA2 network
-    status = WiFi.begin(ssid, pass);
-  }
-
-  // you're connected now, so print out the data
-  lcd.setCursor(0, 1);
-  lcd.print("Connected ");
-  lcd.print(ssid);
-  delay(1000);
-  lcd.clear();
-
-
-  //printWifiStatus();
-
-  //Serial.println();
+  // get time from web
+  webget_config();
 
   //watchdog
   wdt_enable(WDTO_4S);  // watchdog counter to 4s
+
+  // RF sensors
+  SensorT25::enable(IRQ_PIN);
 }
 
 void loop()
