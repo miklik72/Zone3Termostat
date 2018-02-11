@@ -134,10 +134,18 @@ SoftwareSerial Serial1(A3, A2); // RX, TX
 char webserver[] = "www.miklik.cz";
 int webport = 80;
 String content;
+#define WEB_REFRESH 60000                     // comunication in miliseconds
+unsigned long webrefresh = millis();
+
 
 // Initialize the Ethernet client object
-int status = WL_IDLE_STATUS;                // the Wifi radio's status
+int wifi_connected = WL_DISCONNECTED;            // the Wifi radio's status
+int wifi_status = WL_IDLE_STATUS;                // the Wifi connection status
 WiFiEspClient client;
+bool wifi_active = false;                       // is wifi active
+#define WIFI_REFRESH 60000                      // wait miliseconds for next connection test
+unsigned long wifirefresh = millis();              // last connection time to wifi
+
 
 //#include <LiquidCrystal.h>
 // initialize the library with the numbers of the interface pins
@@ -205,6 +213,8 @@ boolean rom_change = false;
 #define T_MAIN_C 8
 #define H_MAIN_R 0
 #define H_MAIN_C 15
+#define WIFI_R 1
+#define WIFI_C 7
     // Setup sensor screen
 #define INF_SENS_R 0             //sensor static info row
 #define CH_SENS_C 0
@@ -219,10 +229,6 @@ boolean rom_change = false;
 #define KEYLEFT 2
 #define KEYRIGHT 5
 #define KEYSET 1
-
-  //wifi comunication
-#define WEB_REFRESH 5                     // comunication in minutes
-unsigned long webdelay;
 
 // Application variables
 boolean sens_active[SENSORS]={false,false,false};         // is sensor control active
@@ -502,14 +508,14 @@ long eeprom_read_boottime()
 ******************************************************************************/
 
 // write time into RTC with approve
-void write_time()
+void write_time(DateTime t1)
 {
-          Clock.setHour(tmpHour);
-          Clock.setMinute(tmpMinute);
-          Clock.setSecond(0);
-          Clock.setDate(tmpDate);
-          Clock.setMonth(tmpMonth);
-          Clock.setYear(tmpYear - 2000);
+          Clock.setHour(t1.hour());
+          Clock.setMinute(t1.minute());
+          Clock.setSecond(t1.second());
+          Clock.setDate(t1.day());
+          Clock.setMonth(t1.month());
+          Clock.setYear(t1.year() - 2000);
 }
 
 /*****************************************************************************
@@ -745,6 +751,33 @@ boolean lcd_refresh()
   }
 }
 
+boolean is_web_refresh()
+{
+  if(millis() - webrefresh > WEB_REFRESH)
+  {
+    webrefresh = millis();
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+boolean is_wifi_refresh()
+{
+  if(millis() - wifirefresh > WIFI_REFRESH)
+  {
+    wifirefresh = millis();
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+
 // print simbol of heating, relay is ON
 void print_heating(byte col, byte row)
 {
@@ -836,6 +869,19 @@ void set_relay()
   }
 }
 
+// is wifi connection active
+bool isWifi()
+{
+  return (WiFi.status() == WL_CONNECTED) ? true : false;
+}
+
+void print_wifi_state(byte col, byte row)
+{
+    lcd.setCursor(col, row);
+    char w = (isWifi()) ? 'w' : '_';
+    lcd.print(w);
+}
+
 /*****************************************************************************
 *
 *                     main sensor operations and screen
@@ -866,6 +912,7 @@ void print_main_screen()
     lcd.setCursor(lcdcol, lcdrow);
     print_chanel(c);                                        // print chanel number , invert mean active
 
+    print_wifi_state(WIFI_C,WIFI_R);
 
     if(SensorT25::isValid(c))                               // print chanel value if is valid
     {
@@ -951,55 +998,57 @@ void sensor_set(byte c)
   lcd.clear();
 }
 
-void printWifiStatus()
-{
-  // print the SSID of the network you're attached to
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-
-  // print your WiFi shield's IP address
-  IPAddress ip = WiFi.localIP();
-  Serial.print("IP Address: ");
-  Serial.println(ip);
-
-  // print the received signal strength
-  long rssi = WiFi.RSSI();
-  Serial.print("Signal strength (RSSI):");
-  Serial.print(rssi);
-  Serial.println(" dBm");
-}
+// void printWifiStatus()
+// {
+//   // print the SSID of the network you're attached to
+//   Serial.print("SSID: ");
+//   Serial.println(WiFi.SSID());
+//
+//   // print your WiFi shield's IP address
+//   IPAddress ip = WiFi.localIP();
+//   Serial.print("IP Address: ");
+//   Serial.println(ip);
+//
+//   // print the received signal strength
+//   long rssi = WiFi.RSSI();
+//   Serial.print("Signal strength (RSSI):");
+//   Serial.print(rssi);
+//   Serial.println(" dBm");
+// }
 
 void init_wifi()
 {
+      wdt_disable();
+      WiFi.init(&Serial1);
+      if (WiFi.status() != WL_NO_SHIELD)
+      {
+        while ( wifi_connected != WL_CONNECTED)
+        {
+          wifi_connected = WiFi.begin(ssid, pass);
+        }
+      }
+      wdt_enable(WDTO_4S);
+}
+
+void start_wifi()
+{
   lcd.setCursor(0, 0);
   lcd.print("Start wifi");
-  //delay(500);
-
   //Wifi
   lcd.setCursor(0, 1);
-  WiFi.init(&Serial1);
-  if (WiFi.status() == WL_NO_SHIELD) {
-    lcd.print("WiFi not present");
-    // don't continue
-    return;
-  }
-
-  // attempt to connect to WiFi network
-  while ( status != WL_CONNECTED) {
-    lcd.print("Try wifi:");
+  init_wifi();
+  if (wifi_connected == WL_CONNECTED)
+  {
+    lcd.print("Connected ");
     lcd.print(ssid);
-    // Connect to WPA/WPA2 network
-    status = WiFi.begin(ssid, pass);
+  } else {
+    lcd.print("No WiFi ");
+    delay(10000);
   }
-  //printWifiStatus();
-
-  // you're connected now, so print out the data
-  lcd.setCursor(0, 1);
-  lcd.print("Connected ");
-  lcd.print(ssid);
   delay(500);
   lcd.clear();
 }
+
 
 /*****************************************************************************
 *
@@ -1010,7 +1059,7 @@ void init_wifi()
 void webget_config()
 {
   SensorT25::disable(IRQ_PIN);
-  String page = "GET /config.php";
+  String page = "GET /get_config.php";
   //Serial.println("GET page");
   if (client.connect(webserver, webport)) {
     //Serial.println("Connected to server");
@@ -1025,7 +1074,10 @@ void webget_config()
   }
   // loop for response from WEB
   String webreq;
-  String webdata;
+  String webdata1;
+  String webdata2;
+  String webdata3;
+  String webdata4;
   bool webdata_valid = false;
   while(client.connected()) {
     while(client.available()) {
@@ -1033,18 +1085,29 @@ void webget_config()
       //Serial.println(webreq);
       //Serial.write(client.read());
       if (webreq.length() == 1 && ! webdata_valid) {
+        // read emty line
         webreq = client.readStringUntil('\n');
         //Serial.println(webreq);
-        //webdata_lenght = webreq.toInt();
-        webdata = client.readStringUntil('\n');
+        //unixtime
+        webreq = client.readStringUntil('\n');
+        webtime = webreq.toDouble();
+        webdata1 = client.readStringUntil('\n');
+        webdata2 = client.readStringUntil('\n');
+        webdata3 = client.readStringUntil('\n');
+        webdata4 = client.readStringUntil('\n');
         //Serial.println(webdata);
         webdata_valid = true;
       }
       //wdt_reset();
-      }
+    }
       //Serial.print('#');
-      Serial.println(webdata);
-      webtime = webdata.toDouble();
+      //Serial.println((double) webtime);
+      Serial.println(webdata1);
+      Serial.println(webdata2);
+      Serial.println(webdata3);
+      Serial.println(webdata4);
+      //
+      write_time(webtime);
       //webtime = rtc.now();
       // Serial.println(webtime.year());
       // Serial.println(webtime.month());
@@ -1054,13 +1117,12 @@ void webget_config()
       // Serial.println(webtime.second());
       // Serial.println(webtime.unixtime());
       // set time in RTC
-      Clock.setHour(webtime.hour());
-      Clock.setMinute(webtime.minute());
-      Clock.setSecond(webtime.second());
-      Clock.setDate(webtime.day());
-      Clock.setMonth(webtime.month());
-      Clock.setYear(webtime.year() - 2000);
-
+      // Clock.setHour(webtime.hour());
+      // Clock.setMinute(webtime.minute());
+      // Clock.setSecond(webtime.second());
+      // Clock.setDate(webtime.day());
+      // Clock.setMonth(webtime.month());
+      // Clock.setYear(webtime.year() - 2000);
   }
   if (!client.connected()) {
     Serial.println();
@@ -1130,10 +1192,10 @@ void setup()
   new_boot();
 
   // initialize connection to Wifi
-  init_wifi();
+  start_wifi();
 
   // get time from web
-  webget_config();
+  if (isWifi()) webget_config();
 
   //watchdog
   wdt_enable(WDTO_4S);  // watchdog counter to 4s
@@ -1147,6 +1209,7 @@ void loop()
     wdt_reset();
     calc_heating();
     set_relay();
+    //init_wifi();
 
     key = keypad.getKey();
     switch (key)
