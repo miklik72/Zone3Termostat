@@ -12,6 +12,7 @@ v1.3.1 1.1.2017 - fixed temperature history and calc heating
 v1.3.2 3.1.2017 - added watchdog
 v1.4.0 4.1.2017 - turn on/off extended functions (watchgod,OpenWindow)
 v1.4.1 7.11.2017 - new DS3231 library
+v1.4.2 23.12.2018 - set range time for delay time to 0-23
 
 todo:
 1.5--   1.1.2017 - extra button for activate sensor
@@ -2100,7 +2101,7 @@ void set_time_delay(byte c)
   //if(sens_delay[c][2] > 23) sens_delay[c][2] = t.hour;
   if(sens_delay[c][2] > 23) sens_delay[c][2] = t.hour();
   sens_delay[c][2]++;
-  if(sens_delay[c][2] > 23) sens_delay[c][2] = 1;
+  if(sens_delay[c][2] > 23) sens_delay[c][2] = 0;
 }
 
 //get time in format HHMM as integer
