@@ -12,7 +12,7 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "c:/Users/mikammar/OneDrive - Tieto Corporation/miklik/DEV/Arduino/Zone3Termostat/.pioenvs/uno/firmware.elf",
+            "executable": "c:/Users/mikammar/OneDrive - Tieto Corporation/miklik/DEV/Arduino/Zone3Termostat/.pio/build/uno/firmware.elf",
             "toolchainBinDir": "C:/Users/mikammar/.platformio/packages/toolchain-atmelavr/bin",
             "preLaunchTask": {
                 "type": "PlatformIO",
@@ -24,7 +24,7 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "c:/Users/mikammar/OneDrive - Tieto Corporation/miklik/DEV/Arduino/Zone3Termostat/.pioenvs/uno/firmware.elf",
+            "executable": "c:/Users/mikammar/OneDrive - Tieto Corporation/miklik/DEV/Arduino/Zone3Termostat/.pio/build/uno/firmware.elf",
             "toolchainBinDir": "C:/Users/mikammar/.platformio/packages/toolchain-atmelavr/bin",
             "internalConsoleOptions": "openOnSessionStart"
         }
