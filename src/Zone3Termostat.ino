@@ -13,6 +13,7 @@ v1.3.2 3.1.2017 - added watchdog
 v1.4.0 4.1.2017 - turn on/off extended functions (watchgod,OpenWindow)
 v1.4.1 7.11.2017 - new DS3231 library
 v1.4.2 23.12.2018 - set range time for delay time to 0-23
+v1.4.3 17.12.2019 - change in SensorT25 lib , limit for temp 30C
 
 todo:
 1.5--   1.1.2017 - extra button for activate sensor
@@ -36,7 +37,7 @@ Devices:
 // application version
 #define APP_VERSION_MAIN 1
 #define APP_VERSION_RELEASE 4
-#define APP_VERSION_PATCH 1
+#define APP_VERSION_PATCH 3
 
 #define DAY_STEP 6
 #define PROGRAMS 5
