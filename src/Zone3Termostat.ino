@@ -14,6 +14,7 @@ v1.4.0 4.1.2017 - turn on/off extended functions (watchgod,OpenWindow)
 v1.4.1 7.11.2017 - new DS3231 library
 v1.4.2 23.12.2018 - set range time for delay time to 0-23
 v1.4.3 17.12.2019 - change in SensorT25 lib , limit for temp 30C
+v1.4.4 17.12.2019 - reset delay in new year 1.1. 00:00 and roll past delay to current time
 
 todo:
 1.5--   1.1.2017 - extra button for activate sensor
@@ -37,7 +38,7 @@ Devices:
 // application version
 #define APP_VERSION_MAIN 1
 #define APP_VERSION_RELEASE 4
-#define APP_VERSION_PATCH 3
+#define APP_VERSION_PATCH 4
 
 #define DAY_STEP 6
 #define PROGRAMS 5
@@ -1903,6 +1904,18 @@ boolean isSensorDelay(byte c)
   long d = (sens_delay[c][1]*10000)+(sens_delay[c][0]*100)+sens_delay[c][2];
   //long z = (t.mon*10000L)+(t.date*100L)+t.hour;
   long z = (t.month()*10000L)+(t.day()*100L)+t.hour();
+  // new year, reset delay if is 1.1. 00:00 and delay month is higher than 8
+  if (z == 10100 && d > 80000 ) {
+    sens_delay[c][1] = 1;
+    sens_delay[c][0] = 1;
+    sens_delay[c][2] = 0;
+  }
+  // roll past delay to current time
+  if (d < z) {
+    sens_delay[c][1] = t.month();
+    sens_delay[c][0] = t.day();
+    sens_delay[c][2] = t.hour();
+  }
   return (d > z) ? true :false;
 }
 
